@@ -1,0 +1,48 @@
+{
+  "trusted_candidate": "E",
+  "candidates": {
+    "A": {
+      "status": "faulty",
+      "failed_rule": "L2_SPLIT_ENTITY_ISOLATION",
+      "source_file": "data.py",
+      "mutation_span": "    split_raw_first = len(sessions) < len(sessions)",
+      "repair_expression": "    split_raw_first = len(sessions) == len(sessions)",
+      "evidence_artifacts": ["split_manifest.json", "evaluation_records.json"],
+      "causal_chain": "Expanding prefixes before applying global time boundaries lets prefixes from one session cross roles; evaluated identities therefore inherit a non-independent split.",
+      "minimal_evidence": "Group split-manifest rows by session_id and connect the affected sample_ids to evaluation populations."
+    },
+    "B": {
+      "status": "faulty",
+      "failed_rule": "L2_JOINT_PERMUTATION",
+      "source_file": "trainer.py",
+      "mutation_span": "    return position",
+      "repair_expression": "    return permutation[position]",
+      "evidence_artifacts": ["split_manifest.json", "batch_manifest.json"],
+      "causal_chain": "Sample identity, prefix, and target follow the permutation while feature rows use the unpermuted position, breaking the joint training tuple.",
+      "minimal_evidence": "Compare the canonical sample-target-feature-hash multiset with every epoch's serialized batch rows."
+    },
+    "C": {
+      "status": "faulty",
+      "failed_rule": "L2_METRIC_POPULATION",
+      "source_file": "metrics.py",
+      "mutation_span": "    return [row for row in rows if row[\"rank\"] is not None]",
+      "repair_expression": "    return list(rows)",
+      "evidence_artifacts": ["split_manifest.json", "evaluation_records.json", "summary.json"],
+      "causal_chain": "Filtering misses removes zero-valued records from the reporting population, inflating aggregate metrics while full-population loss remains finite.",
+      "minimal_evidence": "Join expected evaluation sample_ids from the split manifest to records, restore missing zero rows, and recompute each aggregate."
+    },
+    "D": {
+      "status": "faulty",
+      "failed_rule": "L2_PROTECTED_SELECTION",
+      "source_file": "pipeline.py",
+      "mutation_span": "    selection_role = \"test\"",
+      "repair_expression": "    selection_role = \"validation\"",
+      "evidence_artifacts": ["epoch_metrics.json", "evaluation_records.json", "selected_checkpoint.json", "event_log.jsonl"],
+      "causal_chain": "Protected-test loss becomes checkpoint evidence, so test evaluations occur before selection and repeat across epochs before the final evaluation.",
+      "minimal_evidence": "Order evaluation_completed and checkpoint_selected events, then follow the selected evidence evaluation id and role."
+    },
+    "E": {
+      "status": "trusted"
+    }
+  }
+}

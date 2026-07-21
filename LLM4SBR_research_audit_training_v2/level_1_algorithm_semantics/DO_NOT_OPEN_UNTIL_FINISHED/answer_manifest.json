@@ -1,0 +1,85 @@
+{
+  "trusted_candidate": "D",
+  "candidates": {
+    "A": {
+      "status": "faulty",
+      "failed_rule": "L1_BATCH_INVARIANCE",
+      "formula": "Each query q_b must be normalized over its feature coordinate: q_b / ||q_b||_2.",
+      "mutation_span": "    query = F.normalize(inference, p=2, dim=0 if inference.ndim == 2 else -1)",
+      "repair_expression": "    query = F.normalize(inference, p=2, dim=-1)",
+      "why_runnable": "Normalizing along the batch axis preserves rank and shape, so matrix multiplication, top-k retrieval, backward, and optimization all remain valid.",
+      "causal_chain": "Batch-axis normalization couples a query coordinate to other samples; adding a companion changes the first query vector, its cosine scores, and its weighted retrieval.",
+      "minimal_counterexample": "Compare query [3,1] alone with the same row beside [0,4] against the fixed three-item table at top-k one."
+    },
+    "B": {
+      "status": "faulty",
+      "failed_rule": "L1_PADDING",
+      "formula": "Attention probability for every invalid sequence position must be zero, implemented by filling its pre-softmax logit with a negative-infinite value.",
+      "mutation_span": "        masked_logits = logits.masked_fill(~mask.bool(), 0.0)",
+      "repair_expression": "        masked_logits = logits.masked_fill(~mask.bool(), float(\"-inf\"))",
+      "why_runnable": "A zero fill is finite and shape-compatible, so softmax and all downstream operations run while silently assigning probability mass to padding.",
+      "causal_chain": "The invalid logit competes in softmax; the padded hidden row receives positive weight; changing only that row changes global preference and the fused session.",
+      "minimal_counterexample": "Use two real rows [1,2] and [3,4], one masked row, and zero attention scores; the valid mean must remain [2,3]."
+    },
+    "C": {
+      "status": "faulty",
+      "failed_rule": "L1_AUX_GRAD",
+      "formula": "The optimized total is L_rec + tau * L_aux with L_aux attached to the semantic projection graph.",
+      "mutation_span": "        loss = recommendation + self.tau * auxiliary.detach()",
+      "repair_expression": "        loss = recommendation + self.tau * auxiliary",
+      "why_runnable": "Detach preserves the auxiliary scalar value and leaves the recommendation graph trainable, so ordinary loss logging and backward complete.",
+      "causal_chain": "Detach severs the auxiliary branch before total-loss construction; subtracting the recommendation term leaves the recorded residual value but zero gradient to text projection.",
+      "minimal_counterexample": "Differentiate output.loss minus output.recommendation_loss with respect to text_projection.weight on a fixed three-session batch."
+    },
+    "D": {
+      "status": "trusted"
+    },
+    "E": {
+      "status": "faulty",
+      "failed_rule": "L1_LOGIT_CE",
+      "formula": "Cross entropy receives raw class logits z and internally computes log-softmax.",
+      "mutation_span": "    recommendation = F.cross_entropy(logits.softmax(dim=-1), targets.long() - 1)",
+      "repair_expression": "    recommendation = F.cross_entropy(logits, targets.long() - 1)",
+      "why_runnable": "Probabilities have the same shape and finite values as logits, so cross entropy accepts them as numeric inputs without a type or shape error.",
+      "causal_chain": "An external softmax compresses margins before cross entropy applies its own log-softmax; argmax can stay fixed while both objective value and gradients change.",
+      "minimal_counterexample": "Use logits [[12,0,-7],[-5,9,2]] with one-based targets [2,3] and compare scalar losses and input gradients."
+    }
+  },
+  "semantic_sites": {
+    "query_normalization": {
+      "A": "    query = F.normalize(inference, p=2, dim=0 if inference.ndim == 2 else -1)",
+      "B": "    query = F.normalize(inference, dim=0 if inference.ndim == 1 else inference.ndim - 1, p=2)",
+      "C": "    query = torch.nn.functional.normalize(inference, p=2.0, dim=-1)",
+      "D": "    query = F.normalize(input=inference, p=2, dim=-1)",
+      "E": "    query = inference / inference.norm(p=2, dim=-1, keepdim=True).clamp_min(1e-12)"
+    },
+    "padding_fill": {
+      "A": "        masked_logits = logits.masked_fill(mask.logical_not(), float(\"-inf\"))",
+      "B": "        masked_logits = logits.masked_fill(~mask.bool(), 0.0)",
+      "C": "        masked_logits = torch.where(mask.bool(), logits, torch.full_like(logits, -torch.inf) + 0.0)",
+      "D": "        masked_logits = logits.masked_fill(mask == 0, torch.finfo(logits.dtype).min)",
+      "E": "        masked_logits = logits.where(mask.to(dtype=torch.bool), torch.tensor(float(\"-inf\"), dtype=logits.dtype, device=logits.device))"
+    },
+    "auxiliary_total": {
+      "A": "        loss = recommendation + self.tau * auxiliary.clone()",
+      "B": "        loss = torch.add(recommendation, auxiliary, alpha=self.tau)",
+      "C": "        loss = recommendation + self.tau * auxiliary.detach()",
+      "D": "        loss = recommendation + auxiliary.mul(self.tau) + auxiliary.detach().mul(0.0)",
+      "E": "        loss = recommendation + (self.tau * auxiliary).reshape(())"
+    },
+    "ce_input": {
+      "A": "    recommendation = F.cross_entropy(input=logits.contiguous(), target=targets.long() - 1)",
+      "B": "    recommendation = torch.nn.functional.cross_entropy(logits.clone() + 0.0 * logits.softmax(dim=-1).detach(), targets.to(torch.long).sub(1))",
+      "C": "    recommendation = F.cross_entropy(logits + 0.0, targets.long() - torch.ones_like(targets, dtype=torch.long))",
+      "D": "    recommendation = F.cross_entropy(input=logits, target=targets.long().add(-1))",
+      "E": "    recommendation = F.cross_entropy(logits.softmax(dim=-1), targets.long() - 1)"
+    },
+    "style_rotation": {
+      "A": "    return (scores.unsqueeze(-1) * gathered).sum(dim=1)",
+      "B": "    return torch.sum(gathered * scores[..., None], dim=1)",
+      "C": "    return torch.einsum(\"bk,bkh->bh\", scores, gathered)",
+      "D": "    return weighted.sum(dim=-2)",
+      "E": "    return torch.bmm(scores.unsqueeze(1), gathered).squeeze(1)"
+    }
+  }
+}

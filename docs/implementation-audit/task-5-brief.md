@@ -1,0 +1,5 @@
+### Task 5: Level 3 scientific validity blind dossier
+
+Create `tests/research_audit_training_v2/test_30_level3_scientific.py`, public protocol/readme/answer sheet, five candidate dossiers, hidden probes and manifest. Each candidate must emit schema-valid `experiment_config.json`, `planned_runs.csv`, `runs.csv`, `aggregate.csv`, `claim.json`, and `claim.md`. Hidden classification returns one rule for four candidates and none for the trusted dossier. Rules are `L3_BUDGET_FAIRNESS`, `L3_INFORMATION_CONDITION`, `L3_SELECTIVE_REPORTING`, and `L3_EXPERIMENTAL_UNIT`.
+
+Use the frozen values and invariants in `task-5-decisions.md`. Public tests must establish the red state before implementation, then verify all dossiers are parseable and recomputable. Hidden probes inspect structured artifacts only, compare planned completeness, method-specific trial budgets/features, declared exclusions, and one final observation per paired block. Do not reveal the candidate-to-rule mapping in public files or reports.

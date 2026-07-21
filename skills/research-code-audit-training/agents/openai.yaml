@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Code Audit Training"
+  short_description: "Generate four-level scientific code-audit exercises"
+  default_prompt: "Use $research-code-audit-training to turn a paper and its source code into a four-level research-code audit training package."
