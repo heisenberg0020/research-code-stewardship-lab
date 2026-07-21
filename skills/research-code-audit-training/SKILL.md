@@ -14,6 +14,7 @@ Read these references before designing:
 - [four-level-framework.md](references/four-level-framework.md) for level boundaries and fault families.
 - [quality-gates.md](references/quality-gates.md) for mutation, anti-leakage, review, and correction criteria.
 - [artifact-contracts.md](references/artifact-contracts.md) for the output tree and machine-auditable schemas.
+- [level3-level4-implementation-lessons.md](references/level3-level4-implementation-lessons.md) before implementing scientific dossiers or governance timelines.
 
 Read [domain-adaptation.md](references/domain-adaptation.md) when the paper is not session-based recommendation or uses unusual units such as patients, graphs, environments, trajectories, or temporal panels.
 
@@ -85,11 +86,15 @@ Create complete multi-file pipelines. Target identity isolation, joint permutati
 
 ### Level 3 — scientific validity
 
-Create structured experiment dossiers. Target tuning-budget fairness, information-condition parity, planned-run completeness, selective exclusion, experimental units, pairing, uncertainty, or claim scope. Make aggregates arithmetically correct for their declared rows even when the scientific design is wrong. Hidden checks must use JSON/CSV evidence, not prose alone.
+Create structured experiment dossiers. Treat the planned-run matrix as the authoritative expected population and preserve separate planned, observed, aggregate, and claim layers. Freeze paired/block identity, one final observation per method and unit, information condition, complete tuning-budget signatures, predeclared exclusions, practical threshold, and allowed claim scope.
+
+Target tuning-budget fairness, information-condition parity, selective exclusion, experimental units, pairing, uncertainty, or claim scope. Make every aggregate arithmetically correct for its declared included rows even when the scientific design is wrong. Link structured claims to exact evidence run IDs and repeat the same claim ID in prose. Hidden checks must use JSON/CSV evidence, never prose or marginal interval overlap alone.
 
 ### Level 4 — experiment governance
 
-Create closed event, approval, resource, run-ledger, and report timelines. Target explicit approval conflicts, resource overrun, record suppression, or protected-evidence adaptation. A poor result is not itself a violation. Post-hoc reporting of protected evidence is allowed; using it to drive a later adaptive action is not.
+Create a machine-readable frozen protocol with stable clause IDs plus closed event, approval, resource, run-ledger, and report timelines. Give every event evidence references and details; distinguish required values from schema-declared JSON null or CSV blank fields.
+
+Target explicit approval conflicts, resource overrun, record suppression, or protected-evidence adaptation. Prove approval faults positively through status, timing, scope, or limits rather than treating an absent optional approval ID as proof. Recompute resource use and reports from the complete ledger. A poor result is not itself a violation. Post-hoc reporting and discussion of protected evidence are allowed; only explicit flow into a later adaptive action is prohibited.
 
 ## Separate public and hidden surfaces
 
@@ -98,6 +103,8 @@ Keep student-visible materials, public smoke tests, and answer sheets outside is
 The public package verifier must never import hidden answers. Put the whole-package hidden verifier outside the student package. Public stdout may print only neutral PASS/FAIL operability results, never metrics rankings or diagnostic rule names.
 
 Hidden probes must derive findings from behavior and artifacts. Never swallow broad exceptions and translate infrastructure failure into a scientific rule. Let unexpected exceptions fail verification.
+
+Require one content-based classifier per Level 3/4 candidate. Test that injected loader failures propagate and that public validators accept all five candidates without revealing rule names or result rankings.
 
 ## Require evidence-rich answers
 
@@ -135,6 +142,8 @@ python scripts/validate_training_package.py /absolute/path/to/training-package
 ```
 
 Then run the package's real focused and full test commands twice. Confirm protected hashes remain unchanged and normalize temporary paths/timestamps before comparing reproducibility.
+
+Run `git diff --check` when using Git. Make deterministic artifact generators emit repository-standard LF line endings so generated CSV/JSON does not introduce platform-only diffs.
 
 Hand off:
 

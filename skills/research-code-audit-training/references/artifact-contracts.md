@@ -42,7 +42,8 @@ Store at least:
   "trusted_candidate": "<private letter>",
   "candidates": {
     "<letter>": {
-      "rule_ids": [],
+      "status": "trusted or reject",
+      "failed_rule": "one rule ID or absent for trusted",
       "source_spans": [],
       "evidence_artifacts": [],
       "causal_chain": "...",
@@ -75,6 +76,8 @@ Each faulty entry has one rule ID. Keep this file isolated and never import it f
 
 Freeze candidate population, features, tuning budget, experimental unit, pairing, exclusions, metric, threshold, and allowed claim scope before generating dossiers.
 
+Require planned and observed run IDs to agree even when some measured rows are excluded. Keep inclusion decisions and exclusion codes in the observed ledger. Require every structured claim evidence ID to reference an included row.
+
 ## Level 4 minimum artifacts
 
 - machine-readable frozen protocol with stable clause IDs;
@@ -84,6 +87,8 @@ Freeze candidate population, features, tuning budget, experimental unit, pairing
 - report manifest rebuilt from the ledger.
 
 Allow explicit null/blank fields only where the schema declares them nullable.
+
+Rebuild report manifests deterministically from ledger rows ordered by start time. Include run IDs, failed run IDs, claim IDs, terminal-event references, success count, and failure count.
 
 ## Public versus hidden verification
 

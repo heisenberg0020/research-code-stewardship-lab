@@ -39,6 +39,11 @@
 - Base checkpoint selection on validation evidence, with protected evaluation after selection and only as specified.
 - Rebuild report manifests from the complete ledger, not from the report itself.
 - Classify protected leakage only when protected event IDs flow into adaptive actions; reporting and discussion are not adaptive.
+- For Level 3, compare full budget and information-condition signatures, not a single headline value.
+- Require planned/observed run identity and verify every claim evidence ID points to an included run.
+- Count Level 3 observations independently by paired unit and method; do not trust the dossier's declared `n` or unit.
+- For Level 4, require positive approval-conflict evidence and verify decision time, exact scope, and limits.
+- Test deterministic generators for LF line endings and run `git diff --check` before publishing.
 
 ## TDD evidence requirements
 
