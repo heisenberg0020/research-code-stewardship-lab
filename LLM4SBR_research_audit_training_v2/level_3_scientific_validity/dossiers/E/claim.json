@@ -1,0 +1,33 @@
+{
+  "claim_id": "claim-l3-e",
+  "evidence_run_ids": [
+    "P01-baseline-C1",
+    "P01-baseline-C2",
+    "P01-baseline-C3",
+    "P01-proposed-C1",
+    "P01-proposed-C2",
+    "P01-proposed-C3",
+    "P02-baseline-C1",
+    "P02-baseline-C2",
+    "P02-baseline-C3",
+    "P02-proposed-C1",
+    "P02-proposed-C2",
+    "P02-proposed-C3",
+    "P03-baseline-C1",
+    "P03-baseline-C2",
+    "P03-baseline-C3",
+    "P03-proposed-C1",
+    "P03-proposed-C2",
+    "P03-proposed-C3",
+    "P04-baseline-C1",
+    "P04-baseline-C2",
+    "P04-baseline-C3",
+    "P04-proposed-C1",
+    "P04-proposed-C2",
+    "P04-proposed-C3"
+  ],
+  "mean_paired_delta": 0.035,
+  "metric": "NDCG@10",
+  "scope": "synthetic-sbr-final-v1/catalog-8-v1/frozen-protocol-only",
+  "threshold": 0.02
+}

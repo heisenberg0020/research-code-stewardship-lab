@@ -1,0 +1,17 @@
+{
+  "claim_id": "claim-l3-c",
+  "evidence_run_ids": [
+    "P01-baseline-C1",
+    "P01-proposed-C1",
+    "P02-baseline-C1",
+    "P02-proposed-C1",
+    "P03-baseline-C1",
+    "P03-proposed-C1",
+    "P04-baseline-C1",
+    "P04-proposed-C1"
+  ],
+  "mean_paired_delta": 0.035,
+  "metric": "NDCG@10",
+  "scope": "synthetic-sbr-final-v1/catalog-8-v1/frozen-protocol-only",
+  "threshold": 0.02
+}

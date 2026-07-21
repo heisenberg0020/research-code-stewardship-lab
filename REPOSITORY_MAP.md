@@ -18,10 +18,10 @@ This private repository packages the LLM4SBR paper, its implementation, and a re
 
 - Level 1 algorithm semantics: implemented and reviewed.
 - Level 2 pipeline integrity: implemented and regression-tested.
-- Level 3 scientific validity: design and public answer-sheet skeleton are present; executable dossiers are not yet implemented.
-- Level 4 agent experiment governance: design and public answer-sheet skeleton are present; executable timelines are not yet implemented.
+- Level 3 scientific validity: implemented as five structured, recomputable experiment dossiers with hidden scientific-policy probes.
+- Level 4 agent experiment governance: implemented as five closed approval/event/ledger/report timelines with hidden governance probes.
 
-The design specification covers all four levels. Do not describe Level 3 or Level 4 as implemented until their focused tests, hidden probes, answer manifests, and combined regressions are present.
+All four levels have focused tests, isolated answer manifests, public checks, and external hidden verification.
 
 ## Answer isolation
 

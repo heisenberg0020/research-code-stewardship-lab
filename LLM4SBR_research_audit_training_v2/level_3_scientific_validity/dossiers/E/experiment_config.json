@@ -1,0 +1,53 @@
+{
+  "analysis": {
+    "experimental_unit": "checkpoint_snapshot",
+    "final_observations_per_pair_method": 3,
+    "pairing_key": "pair_id"
+  },
+  "candidate_population": "catalog-8-v1",
+  "dataset_id": "synthetic-sbr-final-v1",
+  "methods": {
+    "baseline": {
+      "approved_trial_ids": [
+        "T01",
+        "T02",
+        "T03",
+        "T04"
+      ],
+      "budget": {
+        "unit": "validation_trials",
+        "value": 4
+      },
+      "candidate_set": "catalog-8-v1",
+      "features": [
+        "session_history_v1",
+        "item_id_v1"
+      ],
+      "max_trials": 4
+    },
+    "proposed": {
+      "approved_trial_ids": [
+        "T01",
+        "T02",
+        "T03",
+        "T04"
+      ],
+      "budget": {
+        "unit": "validation_trials",
+        "value": 4
+      },
+      "candidate_set": "catalog-8-v1",
+      "features": [
+        "session_history_v1",
+        "item_id_v1"
+      ],
+      "max_trials": 4
+    }
+  },
+  "metric": "NDCG@10",
+  "practical_threshold": 0.02,
+  "predeclared_exclusion_codes": [
+    "INFRASTRUCTURE_FAILURE_BEFORE_METRIC"
+  ],
+  "study_id": "l3-fixed-study-v1"
+}

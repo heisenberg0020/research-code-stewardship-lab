@@ -1,0 +1,9 @@
+run_id,pair_id,method,observation_role
+P01-baseline-C1,P01,baseline,final
+P01-proposed-C1,P01,proposed,final
+P02-baseline-C1,P02,baseline,final
+P02-proposed-C1,P02,proposed,final
+P03-baseline-C1,P03,baseline,final
+P03-proposed-C1,P03,proposed,final
+P04-baseline-C1,P04,baseline,final
+P04-proposed-C1,P04,proposed,final

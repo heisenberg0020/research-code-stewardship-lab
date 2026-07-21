@@ -1,0 +1,9 @@
+run_id,pair_id,method,observation_role,checkpoint_id,metric_value,included,exclusion_code
+P01-baseline-C1,P01,baseline,final,checkpoint-1,0.400000000000,true,
+P01-proposed-C1,P01,proposed,final,checkpoint-1,0.440000000000,true,
+P02-baseline-C1,P02,baseline,final,checkpoint-1,0.420000000000,true,
+P02-proposed-C1,P02,proposed,final,checkpoint-1,0.455000000000,true,
+P03-baseline-C1,P03,baseline,final,checkpoint-1,0.410000000000,true,
+P03-proposed-C1,P03,proposed,final,checkpoint-1,0.445000000000,true,
+P04-baseline-C1,P04,baseline,final,checkpoint-1,0.430000000000,true,
+P04-proposed-C1,P04,proposed,final,checkpoint-1,0.460000000000,true,

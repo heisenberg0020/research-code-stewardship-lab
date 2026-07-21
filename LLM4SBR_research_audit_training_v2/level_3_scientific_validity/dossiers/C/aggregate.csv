@@ -1,0 +1,3 @@
+method,n,mean,sample_std,unit
+baseline,4,0.415000000000,0.012909944487,paired_block
+proposed,4,0.450000000000,0.009128709292,paired_block
