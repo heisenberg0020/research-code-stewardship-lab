@@ -10,7 +10,7 @@ Research Code Stewardship Lab is a training repository for tasks that combine a 
 
 The repository does not primarily train faster code writing. It trains the ability to detect small, plausible, executable changes that can invalidate a training objective, introduce data leakage, make a comparison unfair, overstate a claim, or let an agent act outside its authorization.
 
-The first complete case study is **LLM4SBR**, a session-based recommendation system using large language models. The repository contains the original research materials, a four-level audit curriculum, validation infrastructure, and a reusable Skill for generating similar training packages from other papers.
+The first complete case study is **LLM4SBR**, a session-based recommendation system using large language models. The repository links to the official research sources and contains a four-level audit curriculum, validation infrastructure, and a reusable Skill for generating similar training packages from other papers.
 
 ## LLM4SBR paper and original implementation
 
@@ -18,8 +18,6 @@ This project respects and preserves the original research sources. The original 
 
 - [LLM4SBR paper (arXiv:2402.13840)](https://arxiv.org/abs/2402.13840)
 - [Original implementation: tsinghua-fib-lab/LLM4SBR](https://github.com/tsinghua-fib-lab/LLM4SBR)
-- [Paper PDF in this repository](2402.13840v2.pdf)
-- [Code copy used as the case-study source](LLM4SBR-main/)
 - [Reference paper-study guide](docs/examples/LLM4SBR_PAPER_STUDY_GUIDE.md)
 
 The original authors' conclusions, attribution, and source-code rights remain with the authors and their official distribution channels. This repository does not claim to replace the paper or the original implementation.
@@ -41,8 +39,9 @@ This lab turns those questions into reproducible, evidence-based exercises. It i
 README.md                              Chinese overview and general framework
 README_EN.md                           This English overview
 REPOSITORY_MAP.md                      Repository navigation
-2402.13840v2.pdf                       LLM4SBR paper
-LLM4SBR-main/                          Original source and reproduction entry points
+LICENSE                                Apache-2.0 license for original software
+DOCUMENTATION_LICENSE.md               CC BY 4.0 notice for original documentation
+THIRD_PARTY_NOTICES.md                 Third-party sources, exclusions, and access links
 LLM4SBR_code_judgement_training/       Earlier five-candidate code-judgment exercise
 LLM4SBR_research_audit_training_v2/    Complete four-level audit package
   level_1_algorithm_semantics/         Formula and algorithm semantics
@@ -585,3 +584,11 @@ LLM4SBR v2 is the first complete runnable instance of this general framework:
 The implementation includes structured experiment configurations, planned and observed runs, recomputable aggregates, evidence-linked claims, stable governance clauses, approval chains, resource ledgers, report manifests, and protected-evidence flow checks. Public entry points report neutral PASS/FAIL results; package-outside hidden checks verify that each level contains one trusted candidate and four single-target errors without exposing the answer mapping.
 
 When adapting the framework to another paper, keep the four capability contracts and evidence standards, but replace the equations, data contracts, metrics, and governance boundaries with those required by the new research domain.
+
+## 13. Licensing and third-party materials
+
+- Original software, workflows, validators, and licensable training-framework code authored by this repository's maintainers are available under the [Apache License 2.0](LICENSE).
+- Original documentation authored by this repository's maintainers is available under [Creative Commons Attribution 4.0 International](DOCUMENTATION_LICENSE.md).
+- The LLM4SBR paper, the authors' source code, datasets, and all other third-party materials are excluded from those grants; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+This public repository no longer redistributes the LLM4SBR PDF, the authors' source repository, or bundled research data. Obtain them from the official arXiv and GitHub links above. The licenses apply only to material the maintainers have authority to license and do not alter third-party rights.

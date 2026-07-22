@@ -9,9 +9,9 @@
 
 ## 依据
 
-- 论文：`../2402.13840v2.pdf`
-- 原项目核心模型：`../LLM4SBR-main/model_LLM.py`
-- 原项目意图定位：`../LLM4SBR-main/Intent_Localization.py`
+- 论文：[LLM4SBR（arXiv:2402.13840）](https://arxiv.org/abs/2402.13840)
+- 原项目核心模型：[model_LLM.py](https://github.com/tsinghua-fib-lab/LLM4SBR/blob/main/model_LLM.py)
+- 原项目意图定位：[Intent_Localization.py](https://github.com/tsinghua-fib-lab/LLM4SBR/blob/main/Intent_Localization.py)
 - 建议精读论文 PDF 第 8–11 页，尤其是公式 (4)–(15) 和 Algorithm 1。
 - `PAPER_AND_SOURCE_MAP.md` 给出公式到代码职责的映射，但不透露答案。
 

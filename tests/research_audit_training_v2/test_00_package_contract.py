@@ -31,40 +31,21 @@ def manifest_paths() -> set[str]:
 
 def expected_protected_paths() -> set[str]:
     old_training = ROOT / "LLM4SBR_code_judgement_training"
-    main = ROOT / "LLM4SBR-main"
-    selected_suffixes = {".py", ".md", ".ipynb"}
-
-    protected = {
+    return {
         path.relative_to(ROOT).as_posix()
         for path in old_training.rglob("*")
         if path.is_file()
         and "__pycache__" not in path.parts
         and not path.name.startswith(".")
     }
-    protected.update(
-        path.relative_to(ROOT).as_posix()
-        for path in main.rglob("*")
-        if path.is_file()
-        and "__pycache__" not in path.parts
-        and "tmp" not in path.parts
-        and (path.suffix in selected_suffixes or path.name.startswith("requirements"))
-    )
-    protected.add(Path("2402.13840v2.pdf").as_posix())
-    return protected
 
 
 class PackageContractTests(unittest.TestCase):
-    def test_manifest_excludes_metadata_and_data_artifacts(self) -> None:
+    def test_manifest_excludes_third_party_research_materials(self) -> None:
         paths = manifest_paths()
         self.assertFalse(any(Path(path).name == ".DS_Store" for path in paths))
-        data_artifact_names = {"train.txt", "test.txt", "all_train_seq.txt"}
-        self.assertFalse(
-            any(
-                path.startswith("LLM4SBR-main/Data/")
-                and Path(path).name in data_artifact_names
-                for path in paths
-            )
-        )
+        self.assertNotIn("2402.13840v2.pdf", paths)
+        self.assertFalse(any(path.startswith("LLM4SBR-main/") for path in paths))
 
     def test_manifest_path_set_matches_derived_protected_files(self) -> None:
         self.assertEqual(manifest_paths(), expected_protected_paths())

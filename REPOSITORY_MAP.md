@@ -1,11 +1,11 @@
 # Repository map
 
-This private repository packages the LLM4SBR paper, its implementation, and a research-code stewardship training system. The root `README.md` is the approved general overview of modern coding-agent capability boundaries and the human role in research-code construction.
+This public repository provides a research-code stewardship training system built around the LLM4SBR case study. The paper and original implementation remain available from their official sources and are not redistributed here. The root `README.md` is the approved general overview of modern coding-agent capability boundaries and the human role in research-code construction.
 
 ## Contents
 
-- `2402.13840v2.pdf`: the paper used as the scientific specification.
-- `LLM4SBR-main/`: the original LLM4SBR implementation and bundled research data/materials.
+- [LLM4SBR paper](https://arxiv.org/abs/2402.13840): the official paper used as the scientific specification.
+- [Original LLM4SBR repository](https://github.com/tsinghua-fib-lab/LLM4SBR): the official implementation source.
 - `LLM4SBR_code_judgement_training/`: the earlier local algorithm-code judgement exercise.
 - `LLM4SBR_research_audit_training_v2/`: the four-level training package.
 - `tests/research_audit_training_v2/`: package, shared-contract, Level 1, and Level 2 acceptance tests.
@@ -29,4 +29,4 @@ Directories named `DO_NOT_OPEN_UNTIL_FINISHED/` contain instructor-only mappings
 
 ## Licensing and provenance
 
-This repository does not grant rights beyond those supplied by the original paper, source code, datasets, and their respective authors. Keep the repository private unless the provenance and redistribution terms of every bundled artifact have been reviewed.
+Original software authored by this repository's maintainers is licensed under Apache-2.0, and original documentation is licensed under CC BY 4.0. These grants exclude the LLM4SBR paper, authors' source code, datasets, and all other third-party materials. See `LICENSE`, `DOCUMENTATION_LICENSE.md`, and `THIRD_PARTY_NOTICES.md`.
