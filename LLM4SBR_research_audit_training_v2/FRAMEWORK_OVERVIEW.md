@@ -173,28 +173,52 @@ Skill 应按以下顺序工作：
 Skill 不会替人决定论文创新是否成立，也不会保证实验获得正结果。它负责把出题与验证流程
 标准化；人仍然负责冻结科学协议、批准关键改变、判断证据强度和承担最终主张责任。
 
-### 0.8 没有作者源码时：先用论文学习协议建立复现地图
+### 0.8 四级训练的前置阶段：先不看源码，建立独立的论文理解
 
-如果你只有论文和补充材料，没有作者官方源码，建议先使用仓库中的
-[PAPER_ONLY_REPRODUCTION_PROTOCOL](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md)。它是一个可以直接
-投喂给 Codex 或其他 Coding Agent 的项目级协议，作用不是生成盲审题，而是先把论文学习和 clean-room
-复现所需的知识、假设和工程结构整理完整。
+正式查看作者源码和 A–E 候选之前，建议先使用仓库中的
+[PAPER_ONLY_REPRODUCTION_PROTOCOL](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md) 学习论文。即使作者已经公开
+源码，也可以主动把源码排除在这一阶段之外：学习者先仅依据论文正文、附录和补充材料建立自己的数学
+契约，随后再用这个独立基准审计代码，而不是把“仓库里这样写”直接当作“论文必然这样要求”。
 
-该协议要求 Agent 在一个 `PAPER_REPRODUCTION_GUIDE.md` 文件中一次性交付五个学习单元，并在 Unit 1
-和 Unit 2 之间加入完整的工程化系统框架。它还要求区分四类证据：论文明确内容 `[P]`、复现假设 `[A]`、
-实际运行结果 `[E]` 和推理解释 `[I]`，避免把“合理的工程选择”误写成作者真实实现。
+该协议会让 Agent 在一个 `PAPER_REPRODUCTION_GUIDE.md` 中完整解释论文问题、公式、tensor contract、
+数据与评估协议、工程系统图和常见静默错误。它还强制区分论文明确内容 `[P]`、复现假设 `[A]`、实际
+实验结果 `[E]` 与推理解释 `[I]`。这四类标签能够帮助学习者在进入 Level 1 前区分“论文证据”“合理
+推导”和“尚不能确定的工程选择”。
 
-推荐用法：
+这里的“不看代码”准确地说是：**不看作者源码、不看训练候选、不看答案和隐藏探针**。协议仍会使用
+tensor 表、模块接口和少量 PyTorch 伪代码帮助解释论文如何落到工程系统；这些内容是教学推导，不是
+作者实现。如果希望连伪代码也不出现，应在调用时额外要求只保留公式、shape、数据流和概念解释。
 
-1. 新建一个论文项目文件夹；
-2. 放入论文 PDF、补充材料和 [协议文件](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md)；
-3. 在 Agent 对话中明确说明“只有论文，没有作者官方源码”；
-4. 要求 Agent 按协议生成单一的 `PAPER_REPRODUCTION_GUIDE.md`；
-5. 先阅读这份指南，再将其中冻结的数学契约、工程接口和假设用于四级审计题设计。
+推荐按以下方式隔离学习材料：
 
-这一步适用于 paper-only reproduction，不适用于已经有作者源码、需要逐文件对照的任务。对于本仓库的
-LLM4SBR 案例，应以现有论文、原始源码和 `PAPER_MAP.md` 为主要材料；论文学习协议可作为补充的学习
-框架，而不是替代源码审计。
+1. 新建一个独立的论文学习目录，只放入论文 PDF、supplementary material 和
+   [协议文件](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md)；
+2. 不把作者源码、四级训练包或 `DO_NOT_OPEN_UNTIL_FINISHED/` 目录放入该学习上下文；
+3. 让 Agent 生成单一的 `PAPER_REPRODUCTION_GUIDE.md`；
+4. 学完后整理一份论文契约：公式、关键轴、mask、target、gradient path、数据切分、指标和论文未规定项；
+5. 再进入 Level 1，首次对照论文契约查看候选代码；之后依次进入 Level 2–4。
+
+可直接使用下面的 Prompt：
+
+```text
+请严格遵循 PAPER_ONLY_REPRODUCTION_PROTOCOL.md，生成完整的 PAPER_REPRODUCTION_GUIDE.md。
+
+本项目可能存在作者源码和四级审计题，但本轮是 source-blind 的论文学习阶段。你只能读取我提供的论文、
+附录、补充材料和协议文件；不得搜索、读取、引用或推断作者源码、第三方实现、A–E 候选、答案映射、
+DO_NOT_OPEN_UNTIL_FINISHED/ 或 hidden probes。
+
+请帮助我仅依据论文建立之后审计代码所需的独立基准：任务与贡献、完整数据流、全部关键公式、tensor
+shape、运算轴、mask 与 target 语义、gradient path、数据切分、训练目标、评估指标、实验结论边界，
+以及论文明确内容和未规定实现细节的清单。
+
+指南可以包含用于解释语义的 tensor contract、工程图和伪代码，但不得把它们描述成作者实现；所有
+论文未规定的选择必须标为 [A]。不要生成本训练题的候选代码，也不要判断任何候选答案。
+```
+
+协议审核结论：它能够很好地完成四级训练前的 **source-blind 论文学习**，尤其适合建立公式、shape、
+数据协议和证据边界；但它原本同时服务于 clean-room reproduction，因此会比纯论文讲义包含更多工程
+设计。生成的工程结构和 `[A]` 只能作为可替换的学习假设，不能在后续做题时升级为论文事实或作者源码
+真值。
 
 ### 0.9 给 Agent 的“训练从哪里开始”Prompt
 
