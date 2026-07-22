@@ -1,0 +1,25 @@
+{
+  "claim_ids": [
+    "claim:r1:failed",
+    "claim:r2:validation",
+    "claim:r3:final",
+    "claim:r4:validation"
+  ],
+  "evidence_refs": [
+    "e03",
+    "e07",
+    "e09",
+    "e12"
+  ],
+  "failed_run_ids": [
+    "r1"
+  ],
+  "failure_count": 1,
+  "included_run_ids": [
+    "r1",
+    "r2",
+    "r3",
+    "r4"
+  ],
+  "success_count": 3
+}

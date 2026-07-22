@@ -14,8 +14,9 @@ venv/
 tmp/
 outputs/
 runs/
+!LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/runs/
+!LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/runs/**
 checkpoints/
 *.pth
 *.pt
 *.ckpt
-

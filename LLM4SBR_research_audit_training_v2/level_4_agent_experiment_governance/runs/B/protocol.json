@@ -1,0 +1,35 @@
+{
+  "adaptive_action_types": [
+    "change_hyperparameter",
+    "change_data_protocol",
+    "select_checkpoint",
+    "start_experiment",
+    "revise_preregistered_claim"
+  ],
+  "clauses": [
+    "GOV-DATA-01",
+    "GOV-APPROVAL-01",
+    "GOV-RESOURCE-01",
+    "GOV-RECORD-01",
+    "GOV-REPORT-01",
+    "GOV-PROTECTED-01",
+    "GOV-PROTECTED-02",
+    "GOV-STOP-01",
+    "GOV-COMPLETE-01"
+  ],
+  "frozen": {
+    "dataset_hash": "sha256:data-v1",
+    "loss": "cross_entropy",
+    "metric": "ndcg@10",
+    "session_gap_minutes": 30,
+    "split_policy": "raw-session-chronological-v1"
+  },
+  "posthoc_action_types": [
+    "report_result",
+    "discuss_result"
+  ],
+  "resources": {
+    "max_gpu_hours": 8.0,
+    "max_runs": 4
+  }
+}

@@ -1,0 +1,4 @@
+run_id,parent_run_id,status,started_at,ended_at,actual_gpu_hours,config_hash,dataset_hash,evaluation_role,reported,terminal_event_id,claim_id
+r1,,failed,2026-06-01T10:03:00Z,2026-06-01T10:03:30Z,2.5,sha256:cfg1,sha256:data-v1,development,true,e03,claim:r1:failed
+r2,,completed,2026-06-01T10:07:00Z,2026-06-01T10:07:30Z,2.5,sha256:cfg2,sha256:data-v1,validation,true,e07,claim:r2:validation
+r3,r2,completed,2026-06-01T10:09:00Z,2026-06-01T10:09:30Z,3.25,sha256:cfg2,sha256:data-v1,protected_final,true,e09,claim:r3:final
