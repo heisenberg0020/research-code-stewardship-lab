@@ -10,6 +10,20 @@
 `research-code-audit-training` Skill。它适合用来训练研究程序员、研究生、研究工程师，以及负责监督
 Coding Agent 的实验负责人。
 
+### LLM4SBR 论文与原始实现
+
+本仓库的首个训练案例来自论文 **LLM4SBR: A Lightweight and Effective Framework for Integrating
+Large Language Models in Session-based Recommendation**。为尊重原作者的研究贡献，论文和原始代码均
+保留其正式来源，并与本仓库的训练材料明确区分：
+
+- [论文：LLM4SBR（arXiv:2402.13840）](https://arxiv.org/abs/2402.13840)
+- [原始代码仓库：tsinghua-fib-lab/LLM4SBR](https://github.com/tsinghua-fib-lab/LLM4SBR)
+- [本仓库中的论文 PDF](2402.13840v2.pdf) · [本仓库中的代码副本](LLM4SBR-main/)
+
+本仓库不主张替代论文或原始实现，也不把训练候选中的任何实现选择归因于作者。LLM4SBR 原始材料仅
+作为论文复现、代码审计和人类能力训练的研究对象；论文结论、作者署名和原始代码的版权与贡献归原作者
+及其发布渠道所有。开始训练前，建议先阅读正式论文和原始仓库说明。
+
 ### 这个仓库为什么存在
 
 Coding Agent 已经能够完成大量框架搭建、模块实现、测试、训练和实验运维工作。真正稀缺的能力因此
