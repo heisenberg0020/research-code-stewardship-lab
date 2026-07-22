@@ -1,0 +1,2 @@
+{"approval_id": "ap-budget", "decided_at": "2026-06-01T10:02:00Z", "decision_event_id": "e02", "limits": {"allowed": true, "max_gpu_hours": 8.0, "max_runs": 4}, "request_event_id": "e01", "scope": "resources.experiment", "status": "approved"}
+{"approval_id": "ap-data", "decided_at": "2026-06-01T10:05:00Z", "decision_event_id": "e05", "limits": {"allowed": false, "requested_value": 60}, "request_event_id": "e04", "scope": "data.sessionization.max_gap_minutes", "status": "rejected"}

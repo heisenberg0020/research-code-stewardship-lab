@@ -1,0 +1,2 @@
+# Minimal dependency set for the public four-level regression suite.
+torch>=2.0,<3
