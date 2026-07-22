@@ -1,19 +1,51 @@
-# 论文复现与研究代码审计四级训练框架：通用总览
+# Research Code Stewardship Lab
 
-版本：1.1
+## 用代码审计训练 Coding Agent 时代的研究判断力
 
-能力资料核对与题目实施校准日期：2026-07-22
+这是一个面向“论文 + 源码 + 实验”任务的研究代码审计训练仓库。它不训练人把代码写得更快，
+而训练人识别那些**能够编译、能够运行、甚至能够产出看似合理结果，却已经破坏论文科学含义**的细微错误。
 
-适用对象：使用 Coding Agent 复现论文、搭建训练框架、运行实验并审查研究结论的程序员、研究生和研究工程师
+仓库以 LLM4SBR（Session-based Recommendation with Large Language Models）为首个完整案例，
+提供论文、原始复现代码、四级候选代码题、答案隔离材料、验证脚本，以及一个可以迁移到其他论文的
+`research-code-audit-training` Skill。它适合用来训练研究程序员、研究生、研究工程师，以及负责监督
+Coding Agent 的实验负责人。
 
-适用范围：推荐系统、NLP、计算机视觉、图学习、强化学习及其他“论文 + 源码 + 实验”任务
+### 这个仓库为什么存在
 
-说明：Coding Agent 的具体模型、模式和产品能力会更新。第 2 节是当前能力快照；迁移到新的
-训练批次时应重新核对官方文档。四级审计结构本身不依赖某个特定模型版本。
+Coding Agent 已经能够完成大量框架搭建、模块实现、测试、训练和实验运维工作。真正稀缺的能力因此
+从“能不能写出代码”转向“能不能判断代码是否忠实、实验是否公平、证据是否足够、Agent 是否越权”。
+本仓库把这些判断拆成可重复、可验证、逐级增加上下文的训练题，帮助人类保留研究协议、科学解释和
+最终主张的控制权。
 
-文件定位：本文是可公开给学习者阅读的通用导论，只说明能力边界、错误家族和证据要求，
-不包含任何具体论文题目的候选答案、实际变异点或隐藏测试。教师版题目设计与答案应单独
-隔离保存。
+### 仓库内容
+
+```text
+README.md                              项目简介与通用训练框架
+REPOSITORY_MAP.md                      全仓库导航
+2402.13840v2.pdf                       LLM4SBR 论文
+LLM4SBR-main/                          论文配套原始源码与复现入口
+LLM4SBR_code_judgement_training/       初版五候选代码辨认题
+LLM4SBR_research_audit_training_v2/    完整四级研究代码审计训练包
+  level_1_algorithm_semantics/         算法语义与公式实现
+  level_2_pipeline_integrity/          数据、训练、评估流水线完整性
+  level_3_scientific_validity/         实验公平性、证据链与科学主张
+  level_4_agent_experiment_governance/ Agent 权限、预算、审批与审计轨迹
+  run_all_public_checks.py             总公共检查入口
+skills/research-code-audit-training/   可迁移的题目生成 Skill 及参考资料
+docs/                                  复现指南、实施审核和设计决策记录
+tests/                                 包契约、四级测试与隐藏验证入口
+```
+
+### 从哪里开始
+
+1. 先阅读本文的四级框架和 Coding Agent 能力边界；
+2. 再看 [REPOSITORY_MAP.md](REPOSITORY_MAP.md) 了解公开材料与隔离材料的位置；
+3. 使用 [四级训练包](LLM4SBR_research_audit_training_v2/README.md) 做题，并按答案模板记录定位、依据、反例、因果影响和修复建议；
+4. 若要为另一篇论文生成同类训练，阅读并安装 [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md)。
+
+本文后续章节是可公开阅读的通用导论：第 0 节介绍 Skill，第 1–3 节说明训练目标、Agent 能力和
+程序员角色，后续章节定义四个 Level 的错误家族、证据标准、实施流程和验收门槛。公开文档不包含
+具体题目的候选答案、实际变异点或隐藏测试；教师版答案与探针保持隔离。
 
 ## 0. 使用 Research Code Audit Training Skill
 
