@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+<title id="title">Published coding benchmark profile for GPT-5.6 Sol</title>
+<desc id="desc">OpenAI-reported native scores: SWE-Bench Pro 64.6 percent, DeepSWE version 1.1 72.7 percent, and Terminal-Bench 2.1 88.8 percent. The benchmarks measure different tasks and the values should not be averaged.</desc>
+<rect width="1200" height="650" rx="28" fill="#0b1220"/>
+<text x="70" y="78" fill="#f8fafc" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700">Published coding-agent benchmark profile</text>
+<text x="70" y="116" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="20">GPT-5.6 Sol · OpenAI release snapshot · 2026-07-09</text>
+<line x1="340.0" y1="160" x2="340.0" y2="500" stroke="#334155" stroke-width="1"/>
+<text x="340.0" y="530" text-anchor="middle" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="16">0%</text>
+<line x1="480.0" y1="160" x2="480.0" y2="500" stroke="#334155" stroke-width="1"/>
+<text x="480.0" y="530" text-anchor="middle" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="16">20%</text>
+<line x1="620.0" y1="160" x2="620.0" y2="500" stroke="#334155" stroke-width="1"/>
+<text x="620.0" y="530" text-anchor="middle" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="16">40%</text>
+<line x1="760.0" y1="160" x2="760.0" y2="500" stroke="#334155" stroke-width="1"/>
+<text x="760.0" y="530" text-anchor="middle" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="16">60%</text>
+<line x1="900.0" y1="160" x2="900.0" y2="500" stroke="#334155" stroke-width="1"/>
+<text x="900.0" y="530" text-anchor="middle" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="16">80%</text>
+<line x1="1040.0" y1="160" x2="1040.0" y2="500" stroke="#334155" stroke-width="1"/>
+<text x="1040.0" y="530" text-anchor="middle" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="16">100%</text>
+<text x="70" y="227" fill="#f8fafc" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700">SWE-Bench Pro</text>
+<text x="70" y="254" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="14">Repository issue resolution</text>
+<rect x="340" y="198" width="700" height="48" rx="12" fill="#1e293b"/>
+<rect x="340" y="198" width="452.2" height="48" rx="12" fill="#38bdf8"/>
+<text x="780.2" y="230" text-anchor="end" fill="#07111f" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">64.6%</text>
+<text x="70" y="339" fill="#f8fafc" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700">DeepSWE v1.1</text>
+<text x="70" y="366" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="14">Long-horizon codebase engineering</text>
+<rect x="340" y="310" width="700" height="48" rx="12" fill="#1e293b"/>
+<rect x="340" y="310" width="508.9" height="48" rx="12" fill="#818cf8"/>
+<text x="836.9" y="342" text-anchor="end" fill="#07111f" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">72.7%</text>
+<text x="70" y="451" fill="#f8fafc" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700">Terminal-Bench 2.1</text>
+<text x="70" y="478" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="14">Terminal planning and tool coordination</text>
+<rect x="340" y="422" width="700" height="48" rx="12" fill="#1e293b"/>
+<rect x="340" y="422" width="621.6" height="48" rx="12" fill="#34d399"/>
+<text x="949.6" y="454" text-anchor="end" fill="#07111f" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">88.8%</text>
+<text x="70" y="578" fill="#cbd5e1" font-family="Arial, Helvetica, sans-serif" font-size="17">Independent native benchmark scores — not a composite score or a capability percentage.</text>
+<text x="70" y="610" fill="#64748b" font-family="Arial, Helvetica, sans-serif" font-size="15">Source: OpenAI, “GPT-5.6: Frontier intelligence that scales with your ambition.” Chart redrawn by this repository.</text>
+</svg>
