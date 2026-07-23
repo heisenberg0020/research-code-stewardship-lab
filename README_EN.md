@@ -12,6 +12,10 @@ The repository does not primarily train faster code writing. It trains the abili
 
 The first complete case study is **LLM4SBR**, a session-based recommendation system using large language models. The repository links to the official research sources and contains a four-level audit curriculum, validation infrastructure, and a reusable Skill for generating similar training packages from other papers.
 
+For a concise introduction to placing coding agents inside a real research project—and separating agent execution, human approval, and evidence review—read the bilingual essay
+[Human–Agent Research Engineering: A Practical Workflow](https://heisenberg0020.github.io/blog.html?post=human-agent-research-engineering-workflow).
+This repository then provides the deeper four-level curriculum, validation methods, and reusable Skill.
+
 ## LLM4SBR paper and original implementation
 
 This project respects and preserves the original research sources. The original paper and repository are the research object; the audit candidates and training materials in this repository are separate educational artifacts.
