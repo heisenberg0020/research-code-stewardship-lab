@@ -16,3 +16,9 @@ The public tree of this repository therefore does not redistribute the LLM4SBR p
 The Apache-2.0 and CC BY 4.0 grants in this repository apply only to original material that the maintainers have authority to license. They do not grant rights in third-party material, nor do they imply endorsement by the LLM4SBR authors, Tsinghua University, dataset providers, or any other third party.
 
 Case-study descriptions, formula references, file names, and links are provided for research, teaching, criticism, reproducibility, and interoperability. Users remain responsible for determining whether their use of third-party material is permitted in their jurisdiction and context.
+
+## Benchmark evidence
+
+The README benchmark figure uses factual scores reported by OpenAI for GPT-5.6 Sol on SWE-Bench Pro, DeepSWE v1.1, and Terminal-Bench 2.1. The source values and links are recorded in [`docs/benchmark-evidence/`](docs/benchmark-evidence/).
+
+The repository does not copy or redistribute OpenAI's chart artwork, benchmark datasets, tasks, logos, model artifacts, or evaluation harnesses. The committed SVG is an original visualization generated from the attributed factual snapshot. Its layout and rendering code are covered by this repository's licenses; benchmark names, third-party marks, underlying benchmark materials, and the cited publications remain with their respective owners. Their mention does not imply endorsement.

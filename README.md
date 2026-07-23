@@ -423,7 +423,29 @@ OpenAI 将 GPT-5.6 Sol 定位为适合复杂编码、研究、计算机操作和
 官方建议优先把子智能体用于探索、测试、分诊和日志分析等读密集任务；并行写密集工作
 需要更谨慎，因为会增加冲突和协调成本。
 
-### 2.3 Agent 不能自动保证的事情
+### 2.3 公开 Benchmark 提供的外部证据
+
+下面的图不是本仓库自行测试的成绩，也不是把不同任务合成为一个“Agent 能力百分比”。
+它依据 OpenAI 于 2026-07-09 公布的 GPT-5.6 Sol 结果重新绘制，分别展示仓库级软件问题
+解决、真实代码库中的长程工程，以及命令行规划、迭代和工具协作能力。
+
+![GPT-5.6 Sol 公开 Coding Agent benchmark 成绩：SWE-Bench Pro 64.6%，DeepSWE v1.1 72.7%，Terminal-Bench 2.1 88.8%](docs/figures/coding-agent-benchmark-profile.svg)
+
+数据来自 [GPT-5.6 官方发布页](https://openai.com/index/gpt-5-6/)；数据快照、图表生成脚本、
+指标含义和许可说明见 [benchmark evidence](docs/benchmark-evidence/README.md)。三项成绩是各
+benchmark 的原生指标，**不能相互平均，也不能解释为 Agent 可以完成任意研究工作的比例**。
+
+这组结果支持“Agent 已能承担大量仓库阅读、实现、修复和终端运维”的判断，但不证明它能
+保证论文忠实性或科学有效性。更接近研究工程的公开评测仍显示明显边界：MLE-bench 测试
+数据准备、训练和实验；PaperBench 测试从论文到可执行复现；CORE-Bench 测试已有研究仓库的
+计算复现。它们使用不同模型、Agent、预算与指标，因此这里只作为能力范围证据，不与上图
+拼成一条虚假的统一曲线。
+
+另外，本仓库不再采用 SWE-bench Verified 作为当前前沿能力的主证据。OpenAI 在 2026 年
+报告其存在测试质量和训练污染问题，并建议改用 SWE-Bench Pro；详见
+[官方说明](https://openai.com/index/why-we-no-longer-evaluate-swe-bench-verified/)。
+
+### 2.4 Agent 不能自动保证的事情
 
 即使 Agent 能完整交付工程系统，也不能由此自动保证：
 

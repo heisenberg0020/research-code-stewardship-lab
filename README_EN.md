@@ -329,6 +329,18 @@ With clear inputs, permissions, and acceptance criteria, a mature coding agent i
 - parallelize independent exploration, testing, and log-analysis tasks;
 - repair ordinary implementation, dependency, and environment failures when the evidence is clear.
 
+### Published benchmark evidence
+
+The following figure is not an evaluation run by this repository and is not a composite “agent capability percentage.” It redraws results reported by OpenAI on 2026-07-09 for GPT-5.6 Sol, covering repository-level issue resolution, long-horizon engineering in real codebases, and command-line planning, iteration, and tool coordination.
+
+![Published GPT-5.6 Sol coding-agent results: SWE-Bench Pro 64.6%, DeepSWE v1.1 72.7%, and Terminal-Bench 2.1 88.8%](docs/figures/coding-agent-benchmark-profile.svg)
+
+The data come from the [official GPT-5.6 release](https://openai.com/index/gpt-5-6/). The frozen snapshot, renderer, metric interpretation, and licensing notes are in [benchmark evidence](docs/benchmark-evidence/README.md). These are native scores from different benchmarks: they must not be averaged or interpreted as the percentage of arbitrary programming or research work an agent can complete.
+
+The results support the narrower claim that current agents can perform substantial repository, implementation, repair, and terminal work. They do not establish paper fidelity or scientific validity. Research-oriented evaluations such as MLE-bench, PaperBench, and CORE-Bench cover machine-learning experimentation, paper-to-execution replication, and computational reproducibility under different systems, budgets, and metrics. They are therefore cited as scope evidence rather than merged into a misleading universal curve.
+
+This repository also avoids using SWE-bench Verified as its main frontier-capability evidence. OpenAI reported in 2026 that the set had test-quality and contamination problems and recommended SWE-Bench Pro; see the [official analysis](https://openai.com/index/why-we-no-longer-evaluate-swe-bench-verified/).
+
 It cannot automatically guarantee that:
 
 - the research question is valid;

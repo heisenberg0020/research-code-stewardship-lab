@@ -39,6 +39,10 @@ jobs:
           python skills/research-code-audit-training/scripts/validate_training_package.py \
             LLM4SBR_research_audit_training_v2
 
+      - name: Verify benchmark evidence figure
+        run: |
+          python docs/benchmark-evidence/render_chart.py --check
+
       - name: Run Level 1-4 public regression checks
         run: |
           python LLM4SBR_research_audit_training_v2/run_all_public_checks.py
