@@ -12,6 +12,11 @@
 `research-code-audit-training` Skill。它适合用来训练研究程序员、研究生、研究工程师，以及负责监督
 Coding Agent 的实验负责人。
 
+如果你希望先了解如何把 Coding Agent 放进一个真实科研项目，并划分“Agent 执行、人类审批、证据审核”
+之间的责任边界，可以阅读双语短文
+[Human–Agent Research Engineering: A Practical Workflow](https://heisenberg0020.github.io/blog.html?post=human-agent-research-engineering-workflow)。
+本文档则继续深入四级训练题、验证方法和 Skill 的具体设计。
+
 ### LLM4SBR 论文与原始实现
 
 本仓库的首个训练案例来自论文 **LLM4SBR: A Lightweight and Effective Framework for Integrating
