@@ -43,9 +43,9 @@ jobs:
         run: |
           python docs/benchmark-evidence/render_chart.py --check
 
-      - name: Check public command entry point
+      - name: Check public command entry point and audit lifecycle
         run: |
-          python -m unittest tests.test_rcsl
+          python -m unittest tests.test_rcsl tests.test_audit_lifecycle
 
       - name: Run Level 1-4 public regression checks
         run: |

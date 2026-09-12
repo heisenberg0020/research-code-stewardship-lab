@@ -17,6 +17,12 @@ from pathlib import Path
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from stewardship_lab import audit as audit_core
+
+
 TRAINING_ROOT = REPOSITORY_ROOT / "LLM4SBR_research_audit_training_v2"
 PUBLIC_CHECK_RUNNER = TRAINING_ROOT / "run_all_public_checks.py"
 SKILL_SOURCE = REPOSITORY_ROOT / "skills" / "research-code-audit-training"
@@ -134,7 +140,8 @@ def normalized_user_path(value: Path | str) -> Path:
 def path_is_isolated(path: Path) -> bool:
     """Reject a path before any filesystem operation reaches instructor material."""
 
-    return ISOLATED_DIRECTORY_NAME in path.parts
+    isolated_name = ISOLATED_DIRECTORY_NAME.casefold()
+    return any(part.casefold() == isolated_name for part in path.parts)
 
 
 def validate_workspace_path(value: Path | str, *, action: str) -> Path | None:
@@ -213,7 +220,9 @@ def workspace_metadata(
     }
 
 
-def command_init_audit(level_number: int, output: Path | str) -> int:
+def command_init_audit(
+    level_number: int, output: Path | str, *, announce: bool = True
+) -> int:
     """Create a new local workspace from public templates without overwriting anything."""
 
     workspace = validate_workspace_path(output, action="create")
@@ -264,11 +273,12 @@ def command_init_audit(level_number: int, output: Path | str) -> int:
         print(f"Any newly created files remain at: {workspace}", file=sys.stderr)
         return 1
 
-    print(f"Created public audit workspace: {workspace}")
-    print(f"Level {level_number}: {LEVELS[level_number].title}")
-    print("Next: replace every double-braced prompt in the four Markdown files.")
-    print(f"Progress: python scripts/rcsl.py status-audit {workspace}")
-    print(f"Final structure check: python scripts/rcsl.py lint-audit {workspace}")
+    if announce:
+        print(f"Created public audit workspace: {workspace}")
+        print(f"Level {level_number}: {LEVELS[level_number].title}")
+        print("Next: replace every double-braced prompt in the four Markdown files.")
+        print(f"Progress: python scripts/rcsl.py status-audit {workspace}")
+        print(f"Final structure check: python scripts/rcsl.py lint-audit {workspace}")
     return 0
 
 
@@ -331,7 +341,7 @@ def inspect_audit_workspace(value: Path | str) -> WorkspaceInspection | None:
             general_issues.append("metadata workspace_type is not recognized")
         if metadata.get("validator_scope") != "structural_only":
             general_issues.append("metadata validator_scope is not structural_only")
-        if metadata.get("schema_version") != 1:
+        if metadata.get("schema_version") not in (1, audit_core.SCHEMA_VERSION):
             general_issues.append("metadata schema_version is not supported")
         metadata_level = metadata.get("level")
         if not isinstance(metadata_level, int) or metadata_level not in LEVELS:
@@ -450,18 +460,16 @@ def command_overview() -> int:
     print("Research Code Stewardship Lab")
     print("Make runnable research code auditable before you trust its claims.")
     print()
-    print("Choose a route:")
-    print("  python scripts/rcsl.py start --level 1   Begin the four-level learner path")
-    print("  python scripts/rcsl.py doctor            Check Python and torch availability")
-    print("  python scripts/rcsl.py validate          Run all public regression checks")
-    print("  python scripts/rcsl.py init-audit --level 1 --output ./my-audit")
-    print("                                             Create a local public audit workspace")
-    print("  python scripts/rcsl.py lint-audit ./my-audit")
-    print("                                             Check its structural completeness")
-    print("  python scripts/rcsl.py status-audit ./my-audit")
-    print("                                             Show progress without failing on drafts")
+    print("Choose an explicit mode:")
+    print("  python scripts/rcsl.py train start --level 1")
+    print("                                             Begin the human audit curriculum")
+    print("  python scripts/rcsl.py train validate    Run learner-visible public checks")
+    print("  python scripts/rcsl.py audit --help      Audit a real, clean Git project")
     print("  python scripts/rcsl.py install-skill --dry-run")
     print("                                             Preview the optional Codex skill setup")
+    print()
+    print("Compatibility aliases remain available: overview, doctor, start, validate,")
+    print("init-audit, lint-audit, and status-audit.")
     print()
     print("Levels: 1 Algorithm semantics · 2 Pipeline integrity ·")
     print("        3 Scientific validity · 4 Agent experiment governance")
@@ -503,9 +511,9 @@ def command_start(level_number: int) -> int:
     print()
     print("Use the worksheet above to record your audit evidence before continuing.")
     if level_number < len(LEVELS):
-        print(f"Next level: python scripts/rcsl.py start --level {level_number + 1}")
+        print(f"Next level: python scripts/rcsl.py train start --level {level_number + 1}")
     else:
-        print("Course check: python scripts/rcsl.py validate")
+        print("Course check: python scripts/rcsl.py train validate")
     return 0
 
 
@@ -532,11 +540,499 @@ def command_install_skill() -> int:
     return 0
 
 
+AUDIT_OUTPUT_LIMITATIONS = (
+    "This checks local records and declared human decisions only; it is not a scientific verdict.",
+    "Actor and reviewer names are labels, not authenticated identities or signatures.",
+    "No audited-project code is executed and no network resource is fetched.",
+)
+
+
+def _path_is_within(child: Path, parent: Path) -> bool:
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        child_parts = tuple(part.casefold() for part in child.parts)
+        parent_parts = tuple(part.casefold() for part in parent.parts)
+        return (
+            len(child_parts) >= len(parent_parts)
+            and child_parts[: len(parent_parts)] == parent_parts
+        )
+
+
+def _print_json(payload: dict[str, object]) -> None:
+    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+
+
+def command_audit_init(
+    project: Path | str,
+    output: Path | str,
+    level_number: int,
+    actor: str,
+    reason: str,
+) -> int:
+    """Create a template workspace and bind it to one clean Git revision."""
+
+    workspace = validate_workspace_path(output, action="create")
+    if workspace is None:
+        return 2
+    snapshot = audit_core.inspect_clean_project(project)
+    project_root = Path(str(snapshot["project_root"])).resolve()
+    workspace_target = workspace.resolve(strict=False)
+    if _path_is_within(workspace_target, project_root) or _path_is_within(
+        project_root, workspace_target
+    ):
+        print("Audit workspace must be outside the bound Git project.", file=sys.stderr)
+        return 1
+    created = command_init_audit(level_number, workspace, announce=False)
+    if created:
+        return created
+    try:
+        metadata = audit_core.bind_audit(
+            project,
+            workspace,
+            actor=actor,
+            rationale=reason,
+        )
+    except audit_core.AuditError:
+        print(
+            f"Public templates were created at {workspace}, but project binding failed. "
+            "They were not overwritten or removed.",
+            file=sys.stderr,
+        )
+        raise
+    lifecycle = metadata["audit_lifecycle"]
+    baseline = lifecycle["baseline"] if isinstance(lifecycle, dict) else {}
+    print(f"Audit workspace CREATED: {workspace}")
+    print(f"Bound read-only project: {project_root}")
+    print(f"Baseline HEAD: {baseline.get('head') if isinstance(baseline, dict) else 'unknown'}")
+    print("G0 decision: DRAFT")
+    print("Next: complete research-contract-template.md, then record a named G0 decision.")
+    print("No project code was executed, no network resource was fetched, and the project was not modified.")
+    return 0
+
+
+def command_audit_status(workspace: Path | str, *, as_json: bool) -> int:
+    report = audit_core.build_report_data(workspace)
+    verification = report["verification"]
+    summary = report["summary"]
+    gate = report["g0_gate"]
+    if not isinstance(verification, dict) or not isinstance(summary, dict) or not isinstance(gate, dict):
+        raise audit_core.AuditError("audit status data is invalid")
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "operation_status": "read",
+        "assessment_status": report["report_status"],
+        "scope": report["validator_scope"],
+        "limitations": report["limitations"],
+        "workspace": verification["workspace"],
+        "project": report["project"],
+        "baseline": report["baseline"],
+        "g0_gate": gate,
+        "summary": summary,
+        "event_count": verification["event_count"],
+        "preflight_issue": report["preflight_issue"],
+    }
+    if as_json:
+        _print_json(payload)
+        return 0
+    print(f"Audit workspace: {payload['workspace']}")
+    print(f"G0 declared status: {str(gate.get('status')).upper()}")
+    print(f"Findings: {summary.get('finding_count')} total · {summary.get('stale_finding_count')} stale")
+    print(f"Ledger: CONSISTENT ({payload['event_count']} retained local events)")
+    print(f"Report state: {str(payload['assessment_status']).upper()}")
+    if payload["preflight_issue"]:
+        print(f"Preflight: NOT READY — {payload['preflight_issue']}")
+    else:
+        print("Preflight: READY for the declared, human-approved scope")
+    print(AUDIT_OUTPUT_LIMITATIONS[0])
+    return 0
+
+
+def command_audit_gate_check(workspace: Path | str, *, as_json: bool) -> int:
+    assessment = audit_core.assess_g0_gate(workspace)
+    payload = {
+        "schema_version": 1,
+        "operation_status": "read",
+        "assessment_status": (
+            "ready-for-preflight" if assessment["ready_for_preflight"] else "needs-human-decision"
+        ),
+        "scope": "G0 contract structure and declared-decision freshness only",
+        "limitations": [assessment["limitation"]],
+        "g0": assessment,
+    }
+    if as_json:
+        _print_json(payload)
+    else:
+        print(f"G0 contract structure: {str(assessment['contract_structure']).upper()}")
+        print(f"G0 declared status: {str(assessment['declared_status']).upper()}")
+        print(
+            "Decision matches current contract: "
+            f"{'YES' if assessment['decision_matches_contract'] else 'NO'}"
+        )
+        print(f"Gate assessment: {str(payload['assessment_status']).upper()}")
+        print(str(assessment["limitation"]))
+    return 0 if assessment["ready_for_preflight"] else 1
+
+
+def command_audit_gate_record(
+    workspace: Path | str,
+    decision: str,
+    reviewer: str,
+    rationale: str,
+    actor: str | None,
+) -> int:
+    gate = audit_core.set_g0_gate(
+        workspace,
+        decision,
+        reviewer=reviewer,
+        rationale=rationale,
+        actor=actor or reviewer,
+    )
+    print(f"G0 decision RECORDED: {str(gate['status']).upper()}")
+    print(f"Declared reviewer: {gate['reviewer']}")
+    print(AUDIT_OUTPUT_LIMITATIONS[1])
+    return 0
+
+
+def command_audit_preflight(workspace: Path | str, *, as_json: bool) -> int:
+    result = audit_core.preflight(workspace)
+    payload = {
+        "schema_version": 1,
+        "operation_status": "checked",
+        "assessment_status": "ready-for-declared-scope",
+        "scope": "clean Git baseline, current contract digest, declared G0 approval, and ledger integrity",
+        "limitations": list(AUDIT_OUTPUT_LIMITATIONS),
+        "preflight": result,
+    }
+    if as_json:
+        _print_json(payload)
+    else:
+        print("Preflight: READY FOR DECLARED SCOPE")
+        print(f"Baseline HEAD: {result['baseline']['head']}")
+        print(AUDIT_OUTPUT_LIMITATIONS[0])
+    return 0
+
+
+def command_audit_rebaseline(
+    workspace: Path | str, *, actor: str, reason: str
+) -> int:
+    baseline = audit_core.rebaseline(workspace, actor=actor, reason=reason)
+    print("Baseline REPLACED and previous baseline retained in the local event history.")
+    print(f"New HEAD: {baseline['head']}")
+    print("G0 decision reset to DRAFT; old findings remain attached to their earlier baseline.")
+    return 0
+
+
+def command_audit_finding_add(args: argparse.Namespace) -> int:
+    finding = audit_core.add_finding(
+        args.workspace,
+        finding_id=args.finding_id,
+        title=args.title,
+        layer=args.layer,
+        competency=args.competency,
+        severity=args.severity,
+        claim=args.claim,
+        first_broken_contract=args.first_contract,
+        actor=args.actor,
+    )
+    print(f"Finding RECORDED: {finding['id']} · {finding['status']}")
+    print("This records a claim for review; it does not establish that the claim is correct.")
+    return 0
+
+
+def command_audit_finding_list(workspace: Path | str, *, as_json: bool) -> int:
+    report = audit_core.build_report_data(workspace)
+    findings = report["findings"]
+    if not isinstance(findings, list):
+        raise audit_core.AuditError("audit finding list data is invalid")
+    if as_json:
+        _print_json(
+            {
+                "schema_version": 1,
+                "operation_status": "read",
+                "assessment_status": "not-assessed",
+                "scope": "recorded finding snapshots",
+                "limitations": [AUDIT_OUTPUT_LIMITATIONS[0]],
+                "findings": findings,
+            }
+        )
+        return 0
+    if not findings:
+        print("No findings recorded.")
+    for finding in findings:
+        print(
+            f"{finding['id']} · {finding['layer']} · {finding['severity']} · "
+            f"{finding['status']} · {finding['baseline_state']} baseline · {finding['title']}"
+        )
+    print(AUDIT_OUTPUT_LIMITATIONS[0])
+    return 0
+
+
+def command_audit_evidence_add(args: argparse.Namespace) -> int:
+    finding = audit_core.add_evidence(
+        args.workspace,
+        args.finding,
+        evidence_id=args.evidence_id,
+        kind=args.kind,
+        reference=args.reference,
+        summary=args.summary,
+        actor=args.actor,
+    )
+    print(f"Evidence RECORDED for {finding['id']}: {args.evidence_id} · {args.kind}")
+    print("Presence in the record does not establish sufficiency, independence, or scientific correctness.")
+    return 0
+
+
+def command_audit_finding_transition(args: argparse.Namespace) -> int:
+    finding = audit_core.transition_finding(
+        args.workspace,
+        args.finding,
+        args.to_status,
+        actor=args.actor,
+        rationale=args.rationale,
+    )
+    print(f"Finding state RECORDED: {finding['id']} → {finding['status']}")
+    print(AUDIT_OUTPUT_LIMITATIONS[0])
+    return 0
+
+
+def command_audit_verify(workspace: Path | str, *, as_json: bool) -> int:
+    result = audit_core.verify_audit_workspace(workspace)
+    payload = {
+        "schema_version": 1,
+        "operation_status": "checked",
+        "assessment_status": "ledger-consistent",
+        "scope": result["validator_scope"],
+        "limitations": list(AUDIT_OUTPUT_LIMITATIONS),
+        "verification": result,
+    }
+    if as_json:
+        _print_json(payload)
+    else:
+        print("Ledger and current snapshots: CONSISTENT")
+        print(f"Events: {result['event_count']} · Findings: {result['finding_count']}")
+        print(f"Findings from an older baseline: {result['stale_finding_count']}")
+        print(AUDIT_OUTPUT_LIMITATIONS[0])
+    return 0
+
+
+def command_audit_report(
+    workspace_value: Path | str, output_value: Path | str, report_format: str
+) -> int:
+    workspace = validate_workspace_path(workspace_value, action="read")
+    if workspace is None or not workspace.is_dir() or workspace.is_symlink():
+        return 2
+    output = normalized_user_path(output_value)
+    if path_is_isolated(output) or path_is_isolated(output.resolve(strict=False)):
+        print("Refusing to write a report into isolated instructor material.", file=sys.stderr)
+        return 2
+    if output.is_symlink() or output.exists():
+        print(f"Refusing to overwrite existing report: {output}", file=sys.stderr)
+        return 1
+    parent = output.parent
+    if parent.is_symlink() or not parent.is_dir():
+        print(f"Report parent must be an existing regular directory: {parent}", file=sys.stderr)
+        return 2
+    workspace_root = workspace.resolve()
+    if output.resolve(strict=False).parent != workspace_root:
+        print(
+            "Report output must be a direct child of the audit workspace root.",
+            file=sys.stderr,
+        )
+        return 1
+    reserved_names = {
+        ".rcsl-write.lock",
+        WORKSPACE_METADATA_NAME,
+        audit_core.EVENT_LOG_NAME,
+        *WORKSPACE_TEMPLATE_FILENAMES,
+    }
+    reserved_names_casefolded = {name.casefold() for name in reserved_names}
+    if output.name.casefold() in reserved_names_casefolded:
+        print(f"Report filename is reserved by the audit workspace: {output.name}", file=sys.stderr)
+        return 1
+    if report_format == "markdown":
+        content = audit_core.render_report_markdown(workspace)
+    else:
+        content = json.dumps(
+            audit_core.build_report_data(workspace),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        ) + "\n"
+    try:
+        with output.open("x", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+    except FileExistsError:
+        print(f"Refusing to overwrite existing report: {output}", file=sys.stderr)
+        return 1
+    except OSError as error:
+        print(f"Could not write report: {error}", file=sys.stderr)
+        return 2
+    print(f"Review report CREATED: {output}")
+    print("The report is a rendered evidence record, not a scientific PASS or release approval.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Public navigation, audit-workspace scaffolding, and verification for RCSL."
+        description=(
+            "RCSL has two explicit modes: train is a human audit curriculum "
+            "(it never trains a model); audit manages evidence for a real Git project."
+        )
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
+
+    train_parser = subcommands.add_parser(
+        "train",
+        help="Use the human research-code audit curriculum; this never trains a model.",
+        description=(
+            "Human research-code audit curriculum. This mode never trains a model "
+            "and its public checks are not scientific verdicts."
+        ),
+    )
+    train_commands = train_parser.add_subparsers(dest="train_command", required=True)
+    train_commands.add_parser("overview", help="Show curriculum routes and boundaries.")
+    train_commands.add_parser("doctor", help="Show Python and optional torch availability.")
+    train_commands.add_parser("validate", help="Run learner-visible public package checks.")
+    train_start = train_commands.add_parser("start", help="Show materials for one audit level.")
+    train_start.add_argument(
+        "--level",
+        type=int,
+        choices=tuple(LEVELS),
+        required=True,
+        help="Curriculum level to begin (1 through 4).",
+    )
+
+    audit_parser = subcommands.add_parser(
+        "audit",
+        help=(
+            "Manage a local evidence lifecycle for one clean Git project; "
+            "does not execute project code or make a scientific verdict."
+        ),
+        description=(
+            "Manage a local evidence lifecycle for one clean Git project. "
+            "This mode does not execute project code, use the network, modify the target, "
+            "or make a scientific verdict."
+        ),
+    )
+    audit_commands = audit_parser.add_subparsers(dest="audit_command", required=True)
+
+    audit_init = audit_commands.add_parser(
+        "init",
+        help="Create an external workspace bound to one clean Git HEAD; no source execution.",
+    )
+    audit_init.add_argument("--project", type=Path, required=True, help="Clean Git worktree to bind read-only.")
+    audit_init.add_argument("--output", type=Path, required=True, help="New workspace outside the project.")
+    audit_init.add_argument("--level", type=int, choices=tuple(LEVELS), required=True)
+    audit_init.add_argument("--actor", required=True, help="Declared actor label; not authenticated identity.")
+    audit_init.add_argument(
+        "--reason",
+        default="Initial clean Git baseline recorded for a bounded research-code audit.",
+        help="Why this project revision is the initial audit baseline.",
+    )
+
+    audit_status = audit_commands.add_parser(
+        "status", help="Read binding, G0, finding, ledger, and preflight summary."
+    )
+    audit_status.add_argument("workspace", type=Path)
+    audit_status.add_argument("--json", action="store_true", help="Emit stable machine-readable JSON.")
+
+    audit_lint = audit_commands.add_parser(
+        "lint", help="Check template structure only; never judges a finding or claim."
+    )
+    audit_lint.add_argument("workspace", type=Path)
+
+    audit_gate = audit_commands.add_parser(
+        "gate", help="Check or record the declared human G0 decision."
+    )
+    gate_commands = audit_gate.add_subparsers(dest="gate_command", required=True)
+    gate_check = gate_commands.add_parser(
+        "check", help="Read G0 structure and decision freshness; grants no authority."
+    )
+    gate_check.add_argument("workspace", type=Path)
+    gate_check.add_argument("--json", action="store_true")
+    gate_record = gate_commands.add_parser(
+        "record", help="Record a named human decision bound to the current contract bytes."
+    )
+    gate_record.add_argument("workspace", type=Path)
+    gate_record.add_argument("--decision", choices=audit_core.G0_STATUSES, required=True)
+    gate_record.add_argument("--reviewer", required=True)
+    gate_record.add_argument("--rationale", required=True)
+    gate_record.add_argument("--actor", help="Recorder label; defaults to reviewer.")
+
+    audit_preflight = audit_commands.add_parser(
+        "preflight",
+        help="Check approved G0, current contract, clean unchanged Git HEAD, and ledger integrity.",
+    )
+    audit_preflight.add_argument("workspace", type=Path)
+    audit_preflight.add_argument("--json", action="store_true")
+
+    audit_rebaseline = audit_commands.add_parser(
+        "rebaseline", help="Bind a new clean HEAD explicitly and reset G0 to draft."
+    )
+    audit_rebaseline.add_argument("workspace", type=Path)
+    audit_rebaseline.add_argument("--actor", required=True)
+    audit_rebaseline.add_argument("--reason", required=True)
+
+    audit_finding = audit_commands.add_parser(
+        "finding", help="Add, list, or transition structured audit findings."
+    )
+    finding_commands = audit_finding.add_subparsers(dest="finding_command", required=True)
+    finding_add = finding_commands.add_parser(
+        "add", help="Record a finding against the active baseline; truth remains unassessed."
+    )
+    finding_add.add_argument("workspace", type=Path)
+    finding_add.add_argument("--id", dest="finding_id", required=True)
+    finding_add.add_argument("--title", required=True)
+    finding_add.add_argument("--layer", choices=audit_core.LAYERS, required=True)
+    finding_add.add_argument("--competency", choices=audit_core.COMPETENCIES, required=True)
+    finding_add.add_argument("--severity", choices=audit_core.SEVERITIES, required=True)
+    finding_add.add_argument("--claim", required=True)
+    finding_add.add_argument("--first-contract", required=True)
+    finding_add.add_argument("--actor", required=True)
+    finding_list = finding_commands.add_parser("list", help="List recorded finding snapshots.")
+    finding_list.add_argument("workspace", type=Path)
+    finding_list.add_argument("--json", action="store_true")
+    finding_transition = finding_commands.add_parser(
+        "transition", help="Record one allowed, reasoned lifecycle transition."
+    )
+    finding_transition.add_argument("workspace", type=Path)
+    finding_transition.add_argument("--finding", required=True)
+    finding_transition.add_argument("--to", dest="to_status", choices=audit_core.FINDING_STATUSES, required=True)
+    finding_transition.add_argument("--actor", required=True)
+    finding_transition.add_argument("--rationale", required=True)
+
+    audit_evidence = audit_commands.add_parser(
+        "evidence", help="Attach typed evidence to one finding without judging sufficiency."
+    )
+    evidence_commands = audit_evidence.add_subparsers(dest="evidence_command", required=True)
+    evidence_add = evidence_commands.add_parser("add", help="Append a typed evidence record.")
+    evidence_add.add_argument("workspace", type=Path)
+    evidence_add.add_argument("--finding", required=True)
+    evidence_add.add_argument("--id", dest="evidence_id", required=True)
+    evidence_add.add_argument("--kind", choices=audit_core.EVIDENCE_KINDS, required=True)
+    evidence_add.add_argument("--reference", required=True)
+    evidence_add.add_argument("--summary", required=True)
+    evidence_add.add_argument("--actor", required=True)
+
+    audit_verify = audit_commands.add_parser(
+        "verify",
+        help="Check local metadata, finding snapshots, and hash-chain consistency only.",
+    )
+    audit_verify.add_argument("workspace", type=Path)
+    audit_verify.add_argument("--json", action="store_true")
+
+    audit_report = audit_commands.add_parser(
+        "report", help="Render a review record; does not approve science or release."
+    )
+    report_commands = audit_report.add_subparsers(dest="report_command", required=True)
+    report_build = report_commands.add_parser(
+        "build", help="Create a non-overwriting Markdown or JSON report inside the workspace."
+    )
+    report_build.add_argument("workspace", type=Path)
+    report_build.add_argument("--output", type=Path, required=True)
+    report_build.add_argument("--format", choices=("markdown", "json"), default="markdown")
 
     subcommands.add_parser("overview", help="Show the available learner routes.")
     subcommands.add_parser("doctor", help="Show Python and torch availability.")
@@ -590,8 +1086,69 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _dispatch_train(args: argparse.Namespace) -> int:
+    if args.train_command == "overview":
+        return command_overview()
+    if args.train_command == "doctor":
+        return command_doctor()
+    if args.train_command == "start":
+        return command_start(args.level)
+    if args.train_command == "validate":
+        return command_validate()
+    raise AssertionError(f"Unhandled train command: {args.train_command}")
+
+
+def _dispatch_audit(args: argparse.Namespace) -> int:
+    if args.audit_command == "init":
+        return command_audit_init(args.project, args.output, args.level, args.actor, args.reason)
+    if args.audit_command == "status":
+        return command_audit_status(args.workspace, as_json=args.json)
+    if args.audit_command == "lint":
+        return command_lint_audit(args.workspace)
+    if args.audit_command == "gate":
+        if args.gate_command == "check":
+            return command_audit_gate_check(args.workspace, as_json=args.json)
+        if args.gate_command == "record":
+            return command_audit_gate_record(
+                args.workspace,
+                args.decision,
+                args.reviewer,
+                args.rationale,
+                args.actor,
+            )
+    if args.audit_command == "preflight":
+        return command_audit_preflight(args.workspace, as_json=args.json)
+    if args.audit_command == "rebaseline":
+        return command_audit_rebaseline(args.workspace, actor=args.actor, reason=args.reason)
+    if args.audit_command == "finding":
+        if args.finding_command == "add":
+            return command_audit_finding_add(args)
+        if args.finding_command == "list":
+            return command_audit_finding_list(args.workspace, as_json=args.json)
+        if args.finding_command == "transition":
+            return command_audit_finding_transition(args)
+    if args.audit_command == "evidence" and args.evidence_command == "add":
+        return command_audit_evidence_add(args)
+    if args.audit_command == "verify":
+        return command_audit_verify(args.workspace, as_json=args.json)
+    if args.audit_command == "report" and args.report_command == "build":
+        return command_audit_report(args.workspace, args.output, args.format)
+    raise AssertionError(f"Unhandled audit command: {args.audit_command}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    try:
+        if args.command == "train":
+            return _dispatch_train(args)
+        if args.command == "audit":
+            return _dispatch_audit(args)
+    except audit_core.AuditError as error:
+        print(f"Audit operation refused: {error}", file=sys.stderr)
+        return 1
+    except OSError as error:
+        print(f"Audit operation failed: {error}", file=sys.stderr)
+        return 2
     if args.command == "overview":
         return command_overview()
     if args.command == "doctor":

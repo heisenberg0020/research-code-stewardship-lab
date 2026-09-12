@@ -1,17 +1,46 @@
 ---
 name: research-code-audit-training
-description: Design and generate test-driven research-code audit training and stewardship workspaces from a paper and source repository. Use when Codex must establish a research contract, map claims to code, create four-level blind exercises with subtle runnable faults, train human triage and agent oversight, manage audit evidence, or build an end-to-end stewardship capstone; includes public/hidden separation, scientific-validity dossiers, governance timelines, review, and correction.
+description: Audit a real research-code project with a Git-bound evidence workspace, or design test-driven research-code audit training from a paper and source repository. Use when Codex must establish a G0 research contract, manage findings and evidence, map claims to code, create four-level exercises with subtle runnable faults, train human triage and agent oversight, or build an end-to-end stewardship capstone; includes baseline drift, human gates, public/hidden separation, scientific-validity dossiers, governance timelines, review, and correction.
 ---
 
-# Research Code Audit Training
+# Research Code Audit and Training
 
-Build training that teaches the human responsibilities left after coding agents can implement and operate most of a research codebase: own the specification, preserve experimental boundaries, demand evidence, and authorize scientific claims.
+Preserve the human responsibilities left after coding agents can implement and
+operate much of a research codebase: own the specification, preserve
+experimental boundaries, demand evidence, and authorize scientific claims.
+Apply them either to a real-project audit or to a deliberately designed
+training package.
+
+## Choose the operating mode first
+
+Use exactly one primary route unless the user explicitly asks for both:
+
+1. **Real-project audit:** the user wants to inspect an existing project, manage
+   findings/evidence, or produce a review handoff. Read
+   [project-audit-workflow.md](references/project-audit-workflow.md), use an
+   external Git-bound audit workspace, and do **not** generate five candidates
+   or hidden answers.
+2. **Training-package design:** the user wants exercises, a new case, a
+   curriculum, candidate mutations, hidden probes, or a capstone. Follow the
+   training workflow below.
+
+If the request is ambiguous, prefer real-project audit when there is one target
+repository and a concrete trust question. Prefer training-package design when
+the requested output is explicitly for learners or assessment. Keep audit
+evidence separate from any later training-case transformation.
 
 ## Read the required guidance
 
-Read these references before designing:
+Always read [stewardship-competencies.md](references/stewardship-competencies.md)
+for the G0 gate, cross-level human capabilities, maturity stages, and role
+routes.
 
-- [stewardship-competencies.md](references/stewardship-competencies.md) for the G0 gate, cross-level human capabilities, maturity stages, role routes, and capstone.
+For a real-project audit, read
+[project-audit-workflow.md](references/project-audit-workflow.md) and follow it
+as the primary workflow.
+
+Before designing a training package, also read:
+
 - [four-level-framework.md](references/four-level-framework.md) for level boundaries and fault families.
 - [quality-gates.md](references/quality-gates.md) for mutation, anti-leakage, review, and correction criteria.
 - [artifact-contracts.md](references/artifact-contracts.md) for the output tree and machine-auditable schemas.
@@ -19,7 +48,10 @@ Read these references before designing:
 
 Read [domain-adaptation.md](references/domain-adaptation.md) when the paper is not session-based recommendation or uses unusual units such as patients, graphs, environments, trajectories, or temporal panels.
 
-## Establish inputs and authority
+The remaining sections of this file apply to **training-package design** unless
+they explicitly say otherwise.
+
+## Establish training-package inputs and authority
 
 Require a paper and its source repository. Locate them locally when possible; ask only for genuinely missing inputs. Treat existing source, data, paper files, and prior exercises as protected. Record their hashes or Git status before writing.
 
@@ -157,7 +189,7 @@ After each level, inspect all public and hidden surfaces using [quality-gates.md
 
 Reject a level if the trusted candidate has a second bug, a faulty candidate has multiple primary faults, an error can be guessed from style or metrics, a probe depends on candidate names, or public materials reveal the mapping.
 
-## Validate and hand off
+## Validate and hand off a training package
 
 Run the bundled static validator:
 

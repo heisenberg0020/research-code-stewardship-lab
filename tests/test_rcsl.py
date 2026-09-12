@@ -279,5 +279,280 @@ class AuditWorkspaceTests(unittest.TestCase):
         self.assertFalse(workspace.exists())
 
 
+class DualModeCliTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.project = self.root / "project"
+        self.project.mkdir()
+        self._git("init")
+        (self.project / "README.md").write_text("# Audit fixture\n", encoding="utf-8")
+        self._git("add", "README.md")
+        self._git(
+            "-c",
+            "user.name=RCSL CLI Test",
+            "-c",
+            "user.email=rcsl-cli@example.invalid",
+            "commit",
+            "-m",
+            "initial fixture",
+        )
+        self.workspace = self.root / "audit-workspace"
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def _git(self, *arguments: str) -> str:
+        result = subprocess.run(
+            ("git", "-C", str(self.project), *arguments),
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip()
+
+    def _initialize_bound_workspace(self) -> None:
+        result = run_cli(
+            "audit",
+            "init",
+            "--project",
+            str(self.project),
+            "--output",
+            str(self.workspace),
+            "--level",
+            "2",
+            "--actor",
+            "CLI Auditor",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Audit workspace CREATED", result.stdout)
+        self.assertIn("G0 decision: DRAFT", result.stdout)
+
+    def _complete_templates(self) -> None:
+        metadata = json.loads(
+            (self.workspace / "audit-workspace.json").read_text(encoding="utf-8")
+        )
+        for filename in metadata["template_files"]:
+            path = self.workspace / filename
+            completed = re.sub(
+                r"\{\{[^{}\n]+\}\}",
+                "Documented evidence and named owner",
+                path.read_text(encoding="utf-8"),
+            )
+            path.write_text(completed, encoding="utf-8")
+
+    def test_explicit_train_and_audit_help_are_available(self) -> None:
+        train = run_cli("train", "start", "--level", "1")
+        self.assertEqual(train.returncode, 0, train.stderr)
+        self.assertIn("Level 1: Algorithm semantics", train.stdout)
+
+        audit = run_cli("audit", "--help")
+        self.assertEqual(audit.returncode, 0, audit.stderr)
+        for command in ("init", "status", "gate", "preflight", "finding", "evidence", "verify", "report"):
+            self.assertIn(command, audit.stdout)
+        self.assertIn("project code", audit.stdout)
+        self.assertIn("scientific verdict", audit.stdout)
+
+    def test_real_audit_cli_completes_a_review_record(self) -> None:
+        original_head = self._git("rev-parse", "HEAD")
+        original_status = self._git("status", "--porcelain")
+        original_readme = (self.project / "README.md").read_bytes()
+        self._initialize_bound_workspace()
+        self._complete_templates()
+
+        gate_check = run_cli("audit", "gate", "check", str(self.workspace), "--json")
+        self.assertEqual(gate_check.returncode, 1, gate_check.stderr)
+        self.assertEqual(json.loads(gate_check.stdout)["assessment_status"], "needs-human-decision")
+
+        gate_record = run_cli(
+            "audit",
+            "gate",
+            "record",
+            str(self.workspace),
+            "--decision",
+            "approved",
+            "--reviewer",
+            "Research Owner",
+            "--rationale",
+            "The bounded contract and protected evaluation rules were reviewed.",
+        )
+        self.assertEqual(gate_record.returncode, 0, gate_record.stderr)
+
+        preflight = run_cli("audit", "preflight", str(self.workspace), "--json")
+        self.assertEqual(preflight.returncode, 0, preflight.stderr)
+        self.assertEqual(
+            json.loads(preflight.stdout)["assessment_status"],
+            "ready-for-declared-scope",
+        )
+
+        finding = run_cli(
+            "audit",
+            "finding",
+            "add",
+            str(self.workspace),
+            "--id",
+            "F-001",
+            "--title",
+            "Checkpoint lineage requires review",
+            "--layer",
+            "L2",
+            "--competency",
+            "C2",
+            "--severity",
+            "medium",
+            "--claim",
+            "The reported model may not match the declared checkpoint lineage.",
+            "--first-contract",
+            "Each reported run must identify the evaluated checkpoint.",
+            "--actor",
+            "CLI Auditor",
+        )
+        self.assertEqual(finding.returncode, 0, finding.stderr)
+
+        evidence = run_cli(
+            "audit",
+            "evidence",
+            "add",
+            str(self.workspace),
+            "--finding",
+            "F-001",
+            "--id",
+            "E-001",
+            "--kind",
+            "observed",
+            "--reference",
+            "configs/eval.yaml@HEAD",
+            "--summary",
+            "The evaluation configuration names no checkpoint digest.",
+            "--actor",
+            "CLI Auditor",
+        )
+        self.assertEqual(evidence.returncode, 0, evidence.stderr)
+
+        verification = run_cli("audit", "verify", str(self.workspace), "--json")
+        self.assertEqual(verification.returncode, 0, verification.stderr)
+        self.assertEqual(
+            json.loads(verification.stdout)["assessment_status"], "ledger-consistent"
+        )
+
+        report_path = self.workspace / "review.md"
+        report = run_cli(
+            "audit",
+            "report",
+            "build",
+            str(self.workspace),
+            "--output",
+            str(report_path),
+            "--format",
+            "markdown",
+        )
+        self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertIn("not a scientific PASS", report.stdout)
+        self.assertIn("Report status: **REVIEW-READY**", report_path.read_text(encoding="utf-8"))
+
+        duplicate_report = run_cli(
+            "audit",
+            "report",
+            "build",
+            str(self.workspace),
+            "--output",
+            str(report_path),
+        )
+        self.assertEqual(duplicate_report.returncode, 1)
+        self.assertIn("Refusing to overwrite", duplicate_report.stderr)
+
+        outside_report = self.root / "outside-report.md"
+        refused_report = run_cli(
+            "audit",
+            "report",
+            "build",
+            str(self.workspace),
+            "--output",
+            str(outside_report),
+        )
+        self.assertEqual(refused_report.returncode, 1)
+        self.assertFalse(outside_report.exists())
+
+        for reserved_report in (
+            self.workspace / "findings" / "report.md",
+            self.workspace / ".rcsl-write.lock",
+            self.workspace / ".RCSL-WRITE.LOCK",
+        ):
+            refused_reserved = run_cli(
+                "audit",
+                "report",
+                "build",
+                str(self.workspace),
+                "--output",
+                str(reserved_report),
+            )
+            self.assertEqual(refused_reserved.returncode, 1)
+            self.assertFalse(reserved_report.exists())
+
+        isolated_alias = self.root / "do_not_open_until_finished" / "report.md"
+        refused_isolated_alias = run_cli(
+            "audit",
+            "report",
+            "build",
+            str(self.workspace),
+            "--output",
+            str(isolated_alias),
+        )
+        self.assertEqual(refused_isolated_alias.returncode, 2)
+        self.assertIn("isolated instructor material", refused_isolated_alias.stderr)
+
+        status = run_cli("audit", "status", str(self.workspace), "--json")
+        self.assertEqual(status.returncode, 0, status.stderr)
+        status_payload = json.loads(status.stdout)
+        self.assertEqual(status_payload["assessment_status"], "review-ready")
+        self.assertEqual(status_payload["summary"]["finding_count"], 1)
+
+        legacy_lint = run_cli("lint-audit", str(self.workspace))
+        self.assertEqual(legacy_lint.returncode, 0, legacy_lint.stdout + legacy_lint.stderr)
+        self.assertIn("Structure status: COMPLETE", legacy_lint.stdout)
+
+        self.assertEqual(self._git("rev-parse", "HEAD"), original_head)
+        self.assertEqual(self._git("status", "--porcelain"), original_status)
+        self.assertEqual((self.project / "README.md").read_bytes(), original_readme)
+
+    def test_dirty_project_is_refused_before_workspace_creation(self) -> None:
+        (self.project / "dirty.txt").write_text("uncommitted\n", encoding="utf-8")
+        result = run_cli(
+            "audit",
+            "init",
+            "--project",
+            str(self.project),
+            "--output",
+            str(self.workspace),
+            "--level",
+            "1",
+            "--actor",
+            "CLI Auditor",
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("project must be clean", result.stderr)
+        self.assertFalse(self.workspace.exists())
+
+    def test_case_variant_inside_project_is_refused_before_creation(self) -> None:
+        case_variant_project = self.project.with_name(self.project.name.swapcase())
+        apparent_workspace = case_variant_project / "audit-case-alias"
+        result = run_cli(
+            "audit",
+            "init",
+            "--project",
+            str(self.project),
+            "--output",
+            str(apparent_workspace),
+            "--level",
+            "1",
+            "--actor",
+            "CLI Auditor",
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("outside the bound Git project", result.stderr)
+        self.assertFalse((self.project / "audit-case-alias").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
