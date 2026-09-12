@@ -1,6 +1,6 @@
 # Research Code Stewardship Lab：收口后的推进路线图
 
-[English](DUAL_MODE_ROADMAP_EN.md) · [能力模型](COMPETENCY_MODEL.md) · [案例发布模型](CASE_RELEASE_MODEL.md)
+[English](DUAL_MODE_ROADMAP_EN.md) · [项目宪章](PROJECT_CHARTER.md) · [能力模型](COMPETENCY_MODEL.md) · [案例发布模型](CASE_RELEASE_MODEL.md)
 
 ## 目标与边界
 
@@ -12,6 +12,8 @@ RCSL 只保留两个核心用户结果：
 `export` / `package` 是案例发布辅助工具，不是第三种模式。展示层、托管平台和其他集成只有在核心工作流经过真实试点后才会重新评估。
 
 ## 防偏移准则
+
+本节是[项目宪章](PROJECT_CHARTER.md)的路线图摘要；如阶段计划与宪章冲突，以宪章为准。
 
 仓库最初以四级审计训练为主；后来将“帮助负责人完成真实研究代码审计并管理证据”明确加入目标。这是一次有意的双模式扩展，不是要求把仓库建设成通用安全平台、发布平台或展示平台。
 

@@ -1,6 +1,6 @@
 # Research Code Stewardship Lab: Roadmap after scope closure
 
-[中文](DUAL_MODE_ROADMAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Case release model](CASE_RELEASE_MODEL_EN.md)
+[中文](DUAL_MODE_ROADMAP.md) · [Project charter](PROJECT_CHARTER_EN.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Case release model](CASE_RELEASE_MODEL_EN.md)
 
 ## Goal and boundary
 
@@ -12,6 +12,8 @@ RCSL retains only two core user outcomes:
 `export` and `package` are case-release utilities, not a third mode. Presentation, hosting, and other integrations will be reconsidered only after the core workflows have completed real pilots.
 
 ## Anti-drift rule
+
+This section summarizes the [project charter](PROJECT_CHARTER_EN.md) for the roadmap. If a phase plan conflicts with the charter, the charter governs.
 
 The repository began as a four-level audit-training project. It later deliberately added a second outcome: helping an owner audit real research code and manage its evidence. That intentional dual-mode expansion is not a mandate to become a general security, publishing, or presentation platform.
 

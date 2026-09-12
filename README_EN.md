@@ -20,6 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#choose-your-path">Choose your path</a> ·
+  <a href="docs/PROJECT_CHARTER_EN.md">Project charter</a> ·
   <a href="#four-levels">Four levels</a> ·
   <a href="docs/COMPETENCY_MODEL_EN.md">Competency model</a> ·
   <a href="#what-public-pass-means">Validation boundary</a> ·
@@ -28,6 +29,8 @@
 
 > **This is a research-code audit lab, not simply a programming tutorial.**
 > It teaches you to decide whether an implementation is faithful to a paper, whether an experiment is trustworthy, whether the evidence supports the claim, and whether a coding agent stayed within human-approved boundaries.
+
+The [project charter](docs/PROJECT_CHARTER_EN.md) governs long-term direction: runnable is not trustworthy; Agents may execute, humans must judge; close the loop before building the platform, pilot before expanding, and prune before adding.
 
 RCSL now exposes two explicit modes. Both reuse G0, L1–L4, Evidence Passports, and human decision boundaries:
 

@@ -20,6 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#choose-your-path">选择路径</a> ·
+  <a href="docs/PROJECT_CHARTER.md">项目宪章</a> ·
   <a href="#four-levels">四级训练</a> ·
   <a href="docs/COMPETENCY_MODEL.md">能力模型</a> ·
   <a href="#what-public-pass-means">验证边界</a> ·
@@ -28,6 +29,8 @@
 
 > **这是一个研究代码审计实验室，而不是单纯的编程教程。**
 > 它训练你判断：实现是否忠实于论文、实验是否可被信任、证据是否支撑主张，以及 Coding Agent 是否始终处于人类批准的边界内。
+
+长期方向由[项目宪章](docs/PROJECT_CHARTER.md)约束：能跑不等于可信，Agent 可以执行、人必须判断；先闭环再平台，先试点再扩张，先剪枝再新增。
 
 RCSL 现在有两个显式模式，共用 G0、L1–L4、证据护照与人类决策边界：
 
