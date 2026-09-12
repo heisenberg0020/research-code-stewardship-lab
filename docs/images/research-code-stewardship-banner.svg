@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 420" role="img" aria-labelledby="title description">
+  <title id="title">Research Code Stewardship Lab</title>
+  <desc id="description">A visual flow from Paper to Code to Evidence to Governance.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071d31"/>
+      <stop offset="0.52" stop-color="#0a3545"/>
+      <stop offset="1" stop-color="#12596a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#80e4dd"/>
+      <stop offset="1" stop-color="#8fb8ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-35%" width="140%" height="170%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#04111e" flood-opacity=".32"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="420" rx="30" fill="url(#background)"/>
+  <g fill="none" stroke="#a4eced" stroke-opacity=".08">
+    <path d="M0 68H1600M0 138H1600M0 208H1600M0 278H1600M0 348H1600"/>
+    <path d="M120 0V420M320 0V420M520 0V420M720 0V420M920 0V420M1120 0V420M1320 0V420M1520 0V420"/>
+  </g>
+  <circle cx="1354" cy="80" r="164" fill="#87e4e0" opacity=".05"/>
+  <circle cx="248" cy="376" r="168" fill="#99b6ff" opacity=".05"/>
+
+  <text x="92" y="92" fill="#b6f3ee" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20" font-weight="700" letter-spacing="5">RESEARCH CODE STEWARDSHIP LAB</text>
+  <text x="92" y="138" fill="#f7fcff" font-family="Georgia, 'Times New Roman', serif" font-size="40" font-weight="700">Make runnable research defensible.</text>
+  <text x="92" y="173" fill="#bfced8" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18">Trace every claim from its paper specification to code, evidence, and accountable action.</text>
+
+  <path d="M265 282H1335" stroke="url(#accent)" stroke-width="4" stroke-linecap="round" opacity=".7"/>
+  <g fill="url(#accent)">
+    <circle cx="265" cy="282" r="6"/>
+    <circle cx="622" cy="282" r="6"/>
+    <circle cx="978" cy="282" r="6"/>
+    <circle cx="1335" cy="282" r="6"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <g transform="translate(146 208)">
+      <rect width="238" height="148" rx="20" fill="#f6fcfc"/>
+      <rect x="1" y="1" width="236" height="146" rx="19" fill="none" stroke="#a6e2de" stroke-opacity=".68"/>
+      <path d="M31 36h42l20 20v55H31z" fill="#e0f5f2" stroke="#197b83" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M73 36v21h20M45 77h34M45 91h34M45 105h24" fill="none" stroke="#197b83" stroke-width="3" stroke-linecap="round"/>
+      <text x="112" y="65" fill="#124052" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" letter-spacing="2">PAPER</text>
+      <text x="112" y="91" fill="#516a76" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14">claims &amp; contracts</text>
+    </g>
+
+    <g transform="translate(503 208)">
+      <rect width="238" height="148" rx="20" fill="#f6fcfc"/>
+      <rect x="1" y="1" width="236" height="146" rx="19" fill="none" stroke="#a6e2de" stroke-opacity=".68"/>
+      <rect x="28" y="42" width="64" height="58" rx="9" fill="#e6f4ff" stroke="#266d91" stroke-width="3"/>
+      <path d="M43 61l-9 10 9 10M61 81l9-10-9-10M50 88h12" fill="none" stroke="#266d91" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="112" y="65" fill="#124052" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" letter-spacing="2">CODE</text>
+      <text x="112" y="91" fill="#516a76" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14">behavior &amp; lineage</text>
+    </g>
+
+    <g transform="translate(859 208)">
+      <rect width="238" height="148" rx="20" fill="#f6fcfc"/>
+      <rect x="1" y="1" width="236" height="146" rx="19" fill="none" stroke="#a6e2de" stroke-opacity=".68"/>
+      <circle cx="59" cy="69" r="30" fill="#e4f7ee" stroke="#287855" stroke-width="3"/>
+      <path d="M45 69l10 10 19-22" fill="none" stroke="#287855" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="112" y="65" fill="#124052" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" letter-spacing="2">EVIDENCE</text>
+      <text x="112" y="91" fill="#516a76" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14">tests &amp; causal proof</text>
+    </g>
+
+    <g transform="translate(1216 208)">
+      <rect width="238" height="148" rx="20" fill="#f6fcfc"/>
+      <rect x="1" y="1" width="236" height="146" rx="19" fill="none" stroke="#a6e2de" stroke-opacity=".68"/>
+      <path d="M59 35l29 11v23c0 22-12 38-29 46-17-8-29-24-29-46V46z" fill="#f1edff" stroke="#6b52a0" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M48 71l8 8 15-18" fill="none" stroke="#6b52a0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="112" y="65" fill="#124052" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700" letter-spacing="2">GOVERNANCE</text>
+      <text x="112" y="91" fill="#516a76" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14">authority &amp; records</text>
+    </g>
+  </g>
+</svg>

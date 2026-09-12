@@ -1,8 +1,95 @@
 # Research Code Stewardship Lab
 
-**Language:** 中文 README · [English README](README_EN.md)
+<p align="center">
+  <img src="docs/images/research-code-stewardship-banner.svg" alt="Paper → Code → Evidence → Governance" width="100%" />
+</p>
 
-## 用代码审计训练 Coding Agent 时代的研究判断力
+<p align="center">
+  <strong>让每一份“能跑”的科研代码，经得起论文、实验与治理的追问。</strong><br />
+  <sub>Audit runnable research code before you trust the result.</sub>
+</p>
+
+<p align="center">
+  <a href="README.md">中文</a> · <a href="README_EN.md">English</a><br />
+  <a href="https://github.com/heisenberg0020/research-code-stewardship-lab/actions/workflows/public-training-checks.yml"><img src="https://github.com/heisenberg0020/research-code-stewardship-lab/actions/workflows/public-training-checks.yml/badge.svg" alt="Public training checks" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/code-Apache--2.0-2f6f8f.svg" alt="Apache-2.0 license" /></a>
+  <a href="DOCUMENTATION_LICENSE.md"><img src="https://img.shields.io/badge/docs-CC%20BY%204.0-7b4f8e.svg" alt="CC BY 4.0 documentation" /></a>
+  <img src="https://img.shields.io/badge/curriculum-4%20evidence%20layers-1f7a8c.svg" alt="Four evidence layers" />
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#choose-your-path">选择路径</a> ·
+  <a href="#four-levels">四级训练</a> ·
+  <a href="#what-public-pass-means">验证边界</a> ·
+  <a href="#deep-dive">深入了解</a>
+</p>
+
+> **这是一个研究代码审计实验室，而不是单纯的编程教程。**
+> 它训练你判断：实现是否忠实于论文、实验是否可被信任、证据是否支撑主张，以及 Coding Agent 是否始终处于人类批准的边界内。
+
+> **当前推荐入口：**从 [LLM4SBR 四级训练包](LLM4SBR_research_audit_training_v2/README.md) 开始。`LLM4SBR_code_judgement_training/` 保留为早期的算法判错练习，不是新的默认学习路径。
+
+## Quick start
+
+```bash
+git clone https://github.com/heisenberg0020/research-code-stewardship-lab.git
+cd research-code-stewardship-lab
+
+# 如需运行本地公开检查：
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+
+python scripts/rcsl.py doctor
+python scripts/rcsl.py start --level 1
+```
+
+完成 Level 1 后，按顺序继续 Level 2 → 3 → 4。任何时候都可运行以下命令确认**公开材料**的可运行性：
+
+```bash
+python scripts/rcsl.py validate
+```
+
+完整的按角色说明见 [开始指南](docs/GETTING_STARTED.md)（[English](docs/GETTING_STARTED_EN.md)）。
+
+## Choose your path
+
+| 你现在想做什么？ | 从这里开始 | 你会得到什么 |
+| --- | --- | --- |
+| **学习者**：练习发现“可运行但不可信”的科研代码 | [四级训练包](LLM4SBR_research_audit_training_v2/README.md) → `python scripts/rcsl.py start --level 1` | 基于证据的审计记录，而不只是一个候选答案 |
+| **复现者 / 审稿人**：先理解论文，再看源码 | [Source-blind 论文学习协议](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md) | `PRE_AUDIT_BASELINE`：公式、数据流、指标和 claim 边界 |
+| **研究负责人**：把另一篇论文变成训练包 | [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md) → `python scripts/rcsl.py install-skill --dry-run` | 需经人类批准的题目设计规格与可验证训练包 |
+| **维护者**：确认仓库是否仍健康 | `python scripts/rcsl.py doctor` → `python scripts/rcsl.py validate` | 公开检查结果与下一步排错入口 |
+
+## Four levels
+
+```mermaid
+flowchart LR
+    P[论文<br/>Paper] --> L1[Level 1<br/>算法语义]
+    L1 --> L2[Level 2<br/>流水线完整性]
+    L2 --> L3[Level 3<br/>科学有效性]
+    L3 --> L4[Level 4<br/>Agent 实验治理]
+    L4 --> T[可信的<br/>研究主张]
+```
+
+| Level | 你要证明的核心问题 | 首个公开入口 |
+| --- | --- | --- |
+| 1 · Algorithm semantics | 公式、张量、目标函数是否仍与论文一致？ | [Level 1](LLM4SBR_research_audit_training_v2/level_1_algorithm_semantics/README.md) |
+| 2 · Pipeline integrity | 数据身份、切分、训练和评估流水线是否完整？ | [Level 2](LLM4SBR_research_audit_training_v2/level_2_pipeline_integrity/README.md) |
+| 3 · Scientific validity | 比较是否公平，证据是否真的支撑科学主张？ | [Level 3](LLM4SBR_research_audit_training_v2/level_3_scientific_validity/README.md) |
+| 4 · Agent governance | Agent 的权限、预算、审批和审计轨迹是否受控？ | [Level 4](LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/README.md) |
+
+## What public PASS means
+
+> **公开检查 PASS 只说明公开训练材料满足其包契约；它不等于论文结论为真，也不替代你的科学判断。**
+> 请在提交审计结果之前，只使用公开材料；教师答案、变异位置和隐藏探针继续保持隔离。
+
+## Deep dive
+
+下面保留完整的研究背景、四级框架、验证方法与 Skill 设计。它适合在你选定路径后，用作深入参考。
+
+### 用代码审计训练 Coding Agent 时代的研究判断力
 
 这是一个面向“论文 + 源码 + 实验”任务的研究代码审计训练仓库。它不训练人把代码写得更快，
 而训练人识别那些**能够编译、能够运行、甚至能够产出看似合理结果，却已经破坏论文科学含义**的细微错误。
@@ -44,6 +131,8 @@ Coding Agent 已经能够完成大量框架搭建、模块实现、测试、训�
 README.md                              项目简介与通用训练框架
 README_EN.md                           英文版项目简介
 REPOSITORY_MAP.md                      全仓库导航
+requirements.txt                       本地公开检查的学习者依赖
+scripts/rcsl.py                        公开材料导航、环境检查与四级验证入口
 LICENSE                                原创软件的 Apache-2.0 许可证
 DOCUMENTATION_LICENSE.md               原创文档的 CC BY 4.0 许可说明
 THIRD_PARTY_NOTICES.md                 第三方来源、排除项与获取方式
@@ -56,6 +145,8 @@ LLM4SBR_research_audit_training_v2/    完整四级研究代码审计训练包
   run_all_public_checks.py             总公共检查入口
 skills/research-code-audit-training/   可迁移的题目生成 Skill 及参考资料
 docs/                                  复现协议、实施审核和设计决策记录
+  GETTING_STARTED.md                   按学习者 / 维护者 / 研究负责人分流的开始指南
+  GETTING_STARTED_EN.md                英文开始指南
   PAPER_ONLY_REPRODUCTION_PROTOCOL.md  Source-blind 论文学习与 clean-room 复现双模式协议
   examples/LLM4SBR_PAPER_STUDY_GUIDE.md 协议生成的 source-blind 论文学习参考样例
 tests/                                 包契约、四级测试与隐藏验证入口

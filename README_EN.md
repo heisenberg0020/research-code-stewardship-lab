@@ -1,8 +1,95 @@
 # Research Code Stewardship Lab
 
-**Language:** [Chinese README](README.md) · **English README**
+<p align="center">
+  <img src="docs/images/research-code-stewardship-banner.svg" alt="Paper → Code → Evidence → Governance" width="100%" />
+</p>
 
-## Training research judgment in the Coding-Agent era
+<p align="center">
+  <strong>Make every runnable research implementation answer to the paper, the experiment, and its governance.</strong><br />
+  <sub>Audit runnable research code before you trust the result.</sub>
+</p>
+
+<p align="center">
+  <a href="README.md">中文</a> · <a href="README_EN.md">English</a><br />
+  <a href="https://github.com/heisenberg0020/research-code-stewardship-lab/actions/workflows/public-training-checks.yml"><img src="https://github.com/heisenberg0020/research-code-stewardship-lab/actions/workflows/public-training-checks.yml/badge.svg" alt="Public training checks" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/code-Apache--2.0-2f6f8f.svg" alt="Apache-2.0 license" /></a>
+  <a href="DOCUMENTATION_LICENSE.md"><img src="https://img.shields.io/badge/docs-CC%20BY%204.0-7b4f8e.svg" alt="CC BY 4.0 documentation" /></a>
+  <img src="https://img.shields.io/badge/curriculum-4%20evidence%20layers-1f7a8c.svg" alt="Four evidence layers" />
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#choose-your-path">Choose your path</a> ·
+  <a href="#four-levels">Four levels</a> ·
+  <a href="#what-public-pass-means">Validation boundary</a> ·
+  <a href="#deep-dive">Deep dive</a>
+</p>
+
+> **This is a research-code audit lab, not simply a programming tutorial.**
+> It teaches you to decide whether an implementation is faithful to a paper, whether an experiment is trustworthy, whether the evidence supports the claim, and whether a coding agent stayed within human-approved boundaries.
+
+> **Recommended current entry:** begin with the [LLM4SBR four-level package](LLM4SBR_research_audit_training_v2/README.md). `LLM4SBR_code_judgement_training/` remains an earlier algorithm-judgment exercise, not the default learning path.
+
+## Quick start
+
+```bash
+git clone https://github.com/heisenberg0020/research-code-stewardship-lab.git
+cd research-code-stewardship-lab
+
+# Needed only when you want to run the local public checks:
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+
+python scripts/rcsl.py doctor
+python scripts/rcsl.py start --level 1
+```
+
+Continue Level 2 → 3 → 4 in sequence. At any point, validate the runnable **public materials** with:
+
+```bash
+python scripts/rcsl.py validate
+```
+
+For role-specific instructions, read the [Getting started guide](docs/GETTING_STARTED_EN.md) ([中文](docs/GETTING_STARTED.md)).
+
+## Choose your path
+
+| What are you trying to do? | Start here | What you will produce |
+| --- | --- | --- |
+| **Learner:** spot research code that runs but should not be trusted | [Four-level package](LLM4SBR_research_audit_training_v2/README.md) → `python scripts/rcsl.py start --level 1` | An evidence-backed audit record, rather than only a candidate answer |
+| **Reproducer / reviewer:** understand the paper before the implementation | [Source-blind paper-study protocol](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md) | A `PRE_AUDIT_BASELINE` for equations, data flow, metrics, and claim boundaries |
+| **Research owner:** turn another paper into a training package | [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md) → `python scripts/rcsl.py install-skill --dry-run` | A human-approved task-design specification and verifiable package |
+| **Maintainer:** check the health of the repository | `python scripts/rcsl.py doctor` → `python scripts/rcsl.py validate` | Public-check results and a clear debugging entry point |
+
+## Four levels
+
+```mermaid
+flowchart LR
+    P[Paper] --> L1[Level 1<br/>Algorithm semantics]
+    L1 --> L2[Level 2<br/>Pipeline integrity]
+    L2 --> L3[Level 3<br/>Scientific validity]
+    L3 --> L4[Level 4<br/>Agent experiment governance]
+    L4 --> T[Trustworthy<br/>research claims]
+```
+
+| Level | Core question to prove | First public entry |
+| --- | --- | --- |
+| 1 · Algorithm semantics | Do the formula, tensors, and objective still match the paper? | [Level 1](LLM4SBR_research_audit_training_v2/level_1_algorithm_semantics/README.md) |
+| 2 · Pipeline integrity | Are data identity, splits, training, and evaluation still intact? | [Level 2](LLM4SBR_research_audit_training_v2/level_2_pipeline_integrity/README.md) |
+| 3 · Scientific validity | Is the comparison fair, and does the evidence support the scientific claim? | [Level 3](LLM4SBR_research_audit_training_v2/level_3_scientific_validity/README.md) |
+| 4 · Agent governance | Are an agent's permissions, budget, approvals, and audit trail controlled? | [Level 4](LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/README.md) |
+
+## What public PASS means
+
+> **A public PASS says only that the public training materials satisfy their package contract. It does not certify a paper's conclusion or replace scientific judgment.**
+> Until you submit your audit, use learner-visible materials only; instructor answers, mutation locations, and hidden probes remain isolated.
+
+## Deep dive
+
+The complete research background, four-level framework, validation approach, and Skill design remain below as reference once you have chosen a path.
+
+### Training research judgment in the Coding-Agent era
 
 Research Code Stewardship Lab is a training repository for tasks that combine a **research paper, a source-code repository, and executable experiments**. It is designed to teach a capability that is easy to miss when coding agents become very productive:
 
@@ -43,6 +130,8 @@ This lab turns those questions into reproducible, evidence-based exercises. It i
 README.md                              Chinese overview and general framework
 README_EN.md                           This English overview
 REPOSITORY_MAP.md                      Repository navigation
+requirements.txt                       Learner dependency for local public checks
+scripts/rcsl.py                        Public-material navigation, environment checks, and validation
 LICENSE                                Apache-2.0 license for original software
 DOCUMENTATION_LICENSE.md               CC BY 4.0 notice for original documentation
 THIRD_PARTY_NOTICES.md                 Third-party sources, exclusions, and access links
@@ -55,6 +144,8 @@ LLM4SBR_research_audit_training_v2/    Complete four-level audit package
   run_all_public_checks.py             Public validation entry point
 skills/research-code-audit-training/   Portable training-package generation Skill
 docs/                                  Protocols, examples, and implementation decisions
+  GETTING_STARTED.md                   Task-oriented Chinese start guide
+  GETTING_STARTED_EN.md                Task-oriented English start guide
   PAPER_ONLY_REPRODUCTION_PROTOCOL.md  Source-blind paper study and clean-room protocol
   examples/LLM4SBR_PAPER_STUDY_GUIDE.md
                                         Source-blind study example

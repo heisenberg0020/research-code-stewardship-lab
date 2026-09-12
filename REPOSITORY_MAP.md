@@ -6,8 +6,13 @@ This public repository provides a research-code stewardship training system buil
 
 - [LLM4SBR paper](https://arxiv.org/abs/2402.13840): the official paper used as the scientific specification.
 - [Original LLM4SBR repository](https://github.com/tsinghua-fib-lab/LLM4SBR): the official implementation source.
+- `docs/GETTING_STARTED.md`: Chinese task-oriented start guide for learners, reviewers, maintainers, and research owners.
+- `docs/GETTING_STARTED_EN.md`: English version of the task-oriented start guide.
+- `docs/images/research-code-stewardship-banner.svg`: the repository’s self-contained Paper → Code → Evidence → Governance banner.
+- `requirements.txt`: learner-facing runtime dependency list for local public checks.
+- `scripts/rcsl.py`: public-only command entry point (`overview`, `doctor`, `start`, and `validate`).
 - `LLM4SBR_code_judgement_training/`: the earlier local algorithm-code judgement exercise.
-- `LLM4SBR_research_audit_training_v2/`: the four-level training package.
+- `LLM4SBR_research_audit_training_v2/`: the four-level training package and its course hub.
 - `tests/research_audit_training_v2/`: package, shared-contract, Level 1, and Level 2 acceptance tests.
 - `docs/superpowers/specs/`: approved four-level design specification.
 - `docs/superpowers/plans/`: test-driven implementation plan.
