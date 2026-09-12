@@ -40,7 +40,7 @@ G0 Research Contract / Case Manifest
 | --- | --- | --- | --- |
 | Phase 0：当前基线 | **完成** | P0 | 公开案例被误解为盲测或科学认证 |
 | Phase 1：显式 Train/Audit 与真实闭环 | **本轮已完成** | P0 | 默认写入/执行越权，或把工具输出误解为结论 |
-| Phase 2：进度、评分与 Capstone | 计划 | P1 | 机械化打分、泄题、把学习增益说得过强 |
+| Phase 2：进度、人工 Rubric 与 Capstone | **已完成** | P1 | 机械化打分、泄题、把学习增益说得过强 |
 | Phase 3：Demo 导出与 Blind Challenge 分包 | 计划 | P2 | 伪盲测、访问控制缺失、许可证和评价有效性问题 |
 | Phase 4：可选 UI/Registry/集成 | 可选 | P3 | 过早平台化、隐私/锁定、CLI 与 UI 语义漂移 |
 
@@ -73,19 +73,20 @@ G0 Research Contract / Case Manifest
 
 **风险控制：**Audit 命令只读取目标项目或记录本地审计材料，preflight 也不授予执行权限。G0 不完整或没有当前 `approved` gate 时，工具应拒绝后续动作或返回 `needs-human-decision`，而不是猜测。
 
-## Phase 2：学习者进度、评分与跨层 Capstone
+## Phase 2：学习者进度、人工 Rubric 与跨层 Capstone（已完成）
 
 **目的：**把“运行过题目”升级为可观察的能力成长，同时不把答案猜对或自动分数当作科学判断能力。
 
 | 项目 | 内容 |
 | --- | --- |
-| 具体产物 | 本地 `progress.json` 与可读进度摘要；按 Recognize / Prove / Direct / Steward 的 rubric；每级 Evidence Passport 完整性检查；跨 L1–L4 的研究事故 Capstone；人工反馈与重做记录 |
-| 验收标准 | 进度可离线恢复；评分显示证据缺口而非只显示分数；Capstone 要求分诊、委派、影响面、claim 边界和利益相关方沟通；公开检查不泄露答案映射 |
+| 具体产物 | `train progress init/status/check/submit/review/export` 命令族；仓库外的学习者工作区与单一原子更新的 `progress.json`；L1–L4 Evidence Passport 和 Capstone worksheet；Recognize / Prove / Direct / Steward 人工 rubric；不可变提交快照、重做关系、多审阅者反馈与脱敏 Markdown/JSON 导出 |
+| 实现闭环 | `progress init` → 编辑 worksheet → `check` 结构 → `submit` 冻结尝试 → `review` 记录具名人工判断 → 根据 evidence gaps 重做 → `status` 离线恢复 → `export` 生成不覆盖的脱敏摘要。当前草稿、最新冻结提交与历史尝试保持可区分 |
+| 验收标准 | 进度可离线暂停和恢复；状态把 worksheet 结构、尝试状态、人工 review、未判断的科学正确性分开；多审阅者差异不被平均；Capstone 要求 G0、分诊、委派、影响面、claim 边界、修复和利益相关方沟通；公开工作流不读取或导出答案映射 |
 | 非目标 | 全球排行榜、以候选字母自动判定研究能力、用一次完成宣称学习效果、把隐藏答案放入客户端评分器 |
-| 依赖 | Phase 1 的共同产物和 schema；清晰的人工 rubric；经许可的案例/合成事故；答案隔离与复核设计 |
-| 退出条件 | 一个学习者可在本地完成、暂停、恢复和导出自己的证据记录；两位审阅者能用 rubric 解释同一评分差异；Capstone 有明确的人工通过门 |
+| 依赖 | Phase 1 的共同产物和 schema；版本化人工 rubric；公开合成事故；答案隔离与复核设计；标准库原子写入和本地互斥锁 |
+| 退出条件 | **已满足。**学习者能在本地完成、暂停、恢复和导出证据记录；系统保留两位审阅者各自的 rubric 观察、决定与 gap 说明以支持人工解释分歧；Capstone 只能通过明确的具名人工 `pass`，且四档观察必须全部声明为 `demonstrated` |
 
-**风险控制：**把“结构完整性分数”“人工科学判断”和“尚不确定”分开显示；在没有预注册研究之前，不声称课程提升了真实研究质量。
+**风险控制：**CLI 只检查小节、内容和模板提示，绝不自动推导语义、科学正确性或成熟度；`progress.json` 的摘要与原子写入只提供本地一致性，不提供身份认证或外部不可篡改性。当前案例保持 `open-demo-honor-isolation`；在没有预注册研究之前，不声称课程提升了真实研究质量。完整命令见 [Mode Train 指南](TRAIN_MODE.md)。
 
 ## Phase 3：Open Demo 导出与真正 Blind Challenge 分包
 

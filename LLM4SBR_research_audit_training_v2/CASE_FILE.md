@@ -33,8 +33,15 @@
 | L2 | 数据身份、切分、状态、checkpoint 或评估流 | 多文件流水线、冻结规格、运行产物 |
 | L3 | 比较设计、证据总体、统计规则或 claim 范围 | planned/observed runs、aggregate、结构化 claim |
 | L4 | 授权、审批、预算、记录或受保护证据边界 | 冻结协议、事件、审批、资源和报告账本 |
+| Capstone | 多个层级信号交互时的分诊、委派、影响面与发布判断 | 公开合成事故 brief、跨层 response、具名人工复核 |
 
-当前案例还不包含完整的陌生项目 capstone、真实供应链审查、生产部署生命周期或访问受控的评测服务。
+当前案例包含一个公开、合成的跨层 capstone，但不包含陌生私有项目 capstone、真实供应链审查、生产部署生命周期或访问受控的评测服务。它不应被描述为保密或未见测试。
+
+## 本地学习进度与人工复核
+
+`python scripts/rcsl.py train progress ...` 可以在仓库外创建学习者自有工作区，保存 L1–L4 与 Capstone worksheet、不可变提交快照、重做关系、人工反馈和脱敏导出。自动 `check` 只确认必需小节、非空内容和模板提示是否已处理；它不判断答案语义、科学正确性或成熟度。
+
+Recognize / Prove / Direct / Steward 只能由具名人工审阅者声明。L1–L4 的人工 `pass` 要求审阅者把 Recognize 与 Prove 记录为 `demonstrated`；Capstone 的人工 `pass` 要求四档都记录为 `demonstrated`。CLI 只校验声明内部一致性，不验证判断本身。详见 [Mode Train 指南](../docs/TRAIN_MODE.md)。
 
 ## 公开验证
 
@@ -46,7 +53,7 @@ python skills/research-code-audit-training/scripts/validate_training_package.py 
 python LLM4SBR_research_audit_training_v2/run_all_public_checks.py
 ```
 
-预期的四行 `LEVEL n: PASS` 仅说明当前公开验证器的包契约通过。它不披露教学判定，也不替代人工审计。
+预期的四行 `LEVEL n: PASS` 仅说明当前公开验证器的包契约通过。它不披露教学判定，也不替代人工审计。学习工作区显示的 `structure=complete` 同样不等于语义、科学或成熟度通过。
 
 ## 发布与隔离边界
 

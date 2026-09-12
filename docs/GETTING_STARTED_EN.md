@@ -4,7 +4,7 @@
 
 **Research Code Stewardship Lab** helps you decide whether runnable research code, experiments, and agent workflows still honor the paper, experimental protocol, and evidence trail behind them. It is not a code-writing speed course. It develops evidence-based research judgment for the coding-agent era.
 
-[中文指南](GETTING_STARTED.md) · [Repository map](../REPOSITORY_MAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Mode Audit](AUDIT_MODE_EN.md) · [Dual-mode roadmap](DUAL_MODE_ROADMAP_EN.md)
+[中文指南](GETTING_STARTED.md) · [Repository map](../REPOSITORY_MAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Mode Train](TRAIN_MODE_EN.md) · [Mode Audit](AUDIT_MODE_EN.md) · [Dual-mode roadmap](DUAL_MODE_ROADMAP_EN.md)
 
 The CLI now has two explicit paths: `rcsl.py train ...` develops human capability (it does not train a model), while `rcsl.py audit ...` records evidence and decisions for a real Git project. Legacy top-level commands remain compatibility aliases only.
 
@@ -12,7 +12,7 @@ The CLI now has two explicit paths: `rcsl.py train ...` develops human capabilit
 
 | You are a… | Start with… | You will leave with… |
 | --- | --- | --- |
-| **Learner** | `python scripts/rcsl.py train start --level 1` | An evidence chain: location, violated contract, counterexample, causal effect, and safe repair |
+| **Learner** | Read the [Mode Train guide](TRAIN_MODE_EN.md), then create an external workspace with `python scripts/rcsl.py train progress init ...` | Resumable Evidence Passports, immutable attempts, human feedback, and a cross-layer capstone |
 | **Project owner / auditor** | Read the [Mode Audit guide](AUDIT_MODE_EN.md), then bind a clean Git `HEAD` with `python scripts/rcsl.py audit init ...` | G0, structured finding/evidence lifecycle, local event chain, and a human-review report |
 | **Reviewer / maintainer** | Run public checks and review the package contract, documentation, and entry points | A reproducible public-check report and a list of risks that still need human review |
 | **Research owner** | Freeze the paper–code–experiment protocol, then design a new package with the Skill | A human-approved four-level design specification—not unreviewed candidate code |
@@ -34,6 +34,16 @@ python scripts/rcsl.py train validate
 
 You should see `LEVEL 1: PASS` through `LEVEL 4: PASS`. That means the learner-visible package is runnable and its public structure is intact. It does **not** decide which candidate is faithful to the paper or establish a scientific conclusion.
 
+To preserve learning progress, create your own workspace outside the repository:
+
+```bash
+python scripts/rcsl.py train progress init \
+  --output /absolute/path/to/my-rcsl-progress \
+  --learner "your declared label"
+```
+
+Then edit `worksheets/L1.md`, use `train progress check` for structure, `submit` to freeze an attempt, and `review` for a named human record. Finish `capstone` after L1–L4. See the [Mode Train guide](TRAIN_MODE_EN.md) for the complete command sequence.
+
 ### 2. Work in order
 
 Begin with the [course hub](../LLM4SBR_research_audit_training_v2/README.md) and [Progression](../LLM4SBR_research_audit_training_v2/PROGRESSION.md), then continue one level at a time:
@@ -44,6 +54,8 @@ Begin with the [course hub](../LLM4SBR_research_audit_training_v2/README.md) and
 | 2 | Do data identity, splitting, metrics, and checkpoint lineage remain intact? | [`level_2_pipeline_integrity/README.md`](../LLM4SBR_research_audit_training_v2/level_2_pipeline_integrity/README.md) | `python LLM4SBR_research_audit_training_v2/level_2_pipeline_integrity/run_smoke.py` |
 | 3 | Are comparisons fair, and does the evidence support the scientific claim? | [`level_3_scientific_validity/README.md`](../LLM4SBR_research_audit_training_v2/level_3_scientific_validity/README.md) | `python LLM4SBR_research_audit_training_v2/level_3_scientific_validity/validate_evidence_schema.py` |
 | 4 | Are approvals, budgets, records, and protected evidence governed correctly? | [`level_4_agent_experiment_governance/README.md`](../LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/README.md) | `python LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/validate_ledger_schema.py` |
+
+The [cross-layer capstone](../LLM4SBR_research_audit_training_v2/CAPSTONE_BRIEF.md) after Level 4 is not L5. It combines G0, triage, delegation, blast radius, claim boundaries, and communication in one incident response, and only a named human review can pass it.
 
 ### 3. Submit an evidence chain, not a letter
 

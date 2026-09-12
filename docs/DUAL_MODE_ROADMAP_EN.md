@@ -40,7 +40,7 @@ The vertical axis always classifies by the **first failed contract**: L1 semanti
 | --- | --- | --- | --- |
 | Phase 0: current baseline | **Complete** | P0 | A public case is mistaken for a blind task or scientific certification |
 | Phase 1: explicit Train/Audit and real closed loop | **Completed this turn** | P0 | Unauthorized default writes/execution, or tool output mistaken for a conclusion |
-| Phase 2: learner progress, scoring, and capstone | Planned | P1 | Mechanical scoring, answer leakage, overstated learning gains |
+| Phase 2: learner progress, human rubric, and capstone | **Complete** | P1 | Mechanical scoring, answer leakage, overstated learning gains |
 | Phase 3: Demo export and Blind Challenge split packages | Planned | P2 | Pseudo-blinding, missing access control, licensing and measurement-validity failures |
 | Phase 4: optional UI/registry/integrations | Optional | P3 | Premature platform work, privacy/lock-in, CLI/UI semantic drift |
 
@@ -73,19 +73,20 @@ The vertical axis always classifies by the **first failed contract**: L1 semanti
 
 **Risk control:** Audit commands only read the target project or record local audit material; preflight does not grant execution authority. With incomplete G0 or no current `approved` gate, the tool refuses the next action or returns `needs-human-decision`, rather than guessing.
 
-## Phase 2: learner progress, scoring, and cross-level capstone
+## Phase 2: learner progress, human rubric, and cross-level capstone (complete)
 
 **Purpose:** turn “ran an exercise” into observable capability growth without treating a guessed answer or automated score as research judgment.
 
 | Item | Content |
 | --- | --- |
-| Concrete deliverables | Local `progress.json` and readable progress summary; Recognize / Prove / Direct / Steward rubric; completeness checks for each Evidence Passport; cross-L1–L4 research-incident capstone; human feedback and retry record |
-| Acceptance criteria | Progress resumes offline; scoring exposes evidence gaps rather than only a number; capstone requires triage, delegation, blast radius, claim boundary, and stakeholder communication; public checks do not expose answer mappings |
+| Concrete deliverables | `train progress init/status/check/submit/review/export`; a learner workspace outside the repository with one atomically updated `progress.json`; L1–L4 Evidence Passport and capstone worksheets; a human Recognize / Prove / Direct / Steward rubric; immutable submission snapshots, retry links, multi-reviewer feedback, and redacted Markdown/JSON export |
+| Implemented loop | `progress init` → edit a worksheet → `check` structure → `submit` a frozen attempt → `review` with a named human judgment → retry from explicit evidence gaps → resume offline with `status` → create a non-overwriting redacted `export`. The editable draft, latest frozen attempt, and history remain distinct |
+| Acceptance criteria | Progress pauses and resumes offline; status separates worksheet structure, attempt state, human review, and unassessed scientific correctness; reviewer differences are not averaged; the capstone requires G0, triage, delegation, blast radius, claim boundary, remediation, and stakeholder communication; the public workflow neither reads nor exports answer mappings |
 | Non-goals | Global leaderboard, judging research ability from a candidate letter, claiming learning impact from one completion, or putting hidden answers in a client-side scorer |
-| Dependencies | Phase 1 common artifacts and schemas; clear human rubric; licensed cases/synthetic incidents; answer-isolation and review design |
-| Exit condition | A learner can complete, pause, resume, and export their evidence record locally; two reviewers can explain a scoring difference with the rubric; the capstone has an explicit human pass gate |
+| Dependencies | Phase 1 common artifacts and schemas; versioned human rubric; public synthetic incident; answer-isolation and review design; standard-library atomic writes and a local exclusive lock |
+| Exit condition | **Met.** A learner can complete, pause, resume, and export an evidence record locally; the system retains each reviewer's rubric observations, decision, and gap explanation so humans can explain disagreement; the capstone passes only through an explicit named human `pass` with all four observations declared `demonstrated` |
 
-**Risk control:** show “structural-completeness score,” “human scientific judgment,” and “still uncertain” separately. Do not claim the curriculum improves real research quality without preregistered evidence.
+**Risk control:** the CLI checks sections, content, and unresolved prompts only; it never infers meaning, scientific correctness, or maturity. Digests and atomic replacement in `progress.json` provide local consistency, not identity authentication or external immutability. The current case remains `open-demo-honor-isolation`. Do not claim the curriculum improves real research quality without preregistered evidence. See the [Mode Train guide](TRAIN_MODE_EN.md) for exact commands.
 
 ## Phase 3: Open Demo export and true Blind Challenge split packages
 

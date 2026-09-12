@@ -52,6 +52,10 @@ python -m pip install -r requirements.txt
 python scripts/rcsl.py train overview
 python scripts/rcsl.py train doctor
 python scripts/rcsl.py train start --level 1
+
+# Optional: keep resumable progress in a workspace outside the repository
+python scripts/rcsl.py train progress init \
+  --output ../my-rcsl-progress --learner "your declared label"
 ```
 
 Continue Level 2 → 3 → 4 in sequence. At any point, validate the runnable **public materials** with:
@@ -77,12 +81,13 @@ Mode Audit **does not execute target-project code, use the network, or modify th
 Legacy top-level commands such as `doctor`, `start`, `validate`, and `init-audit` remain compatibility aliases. New workflows should use the explicit `train` / `audit` namespaces above.
 
 For role-specific instructions, read the [Getting started guide](docs/GETTING_STARTED_EN.md) ([中文](docs/GETTING_STARTED.md)).
+For progress, immutable retries, the human rubric, and the cross-layer capstone, read the [Mode Train guide](docs/TRAIN_MODE_EN.md).
 
 ## Choose your path
 
 | What are you trying to do? | Start here | What you will produce |
 | --- | --- | --- |
-| **Learner:** spot research code that runs but should not be trusted | [Four-level package](LLM4SBR_research_audit_training_v2/README.md) → `python scripts/rcsl.py train start --level 1` | An evidence-backed audit record, rather than only a candidate answer |
+| **Learner:** spot research code that runs but should not be trusted | [Mode Train guide](docs/TRAIN_MODE_EN.md) → `python scripts/rcsl.py train progress init ...` | Resumable Evidence Passports, immutable attempts, human feedback, and a cross-layer capstone |
 | **Reproducer / reviewer:** understand the paper before the implementation | [Source-blind paper-study protocol](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md) | A `PRE_AUDIT_BASELINE` for equations, data flow, metrics, and claim boundaries |
 | **Project owner / auditor:** audit a real project and manage its evidence | [Mode Audit guide](docs/AUDIT_MODE_EN.md) → `python scripts/rcsl.py audit init ...` | Commit-bound G0, finding/evidence lifecycle, verifiable local event chain, and a human-review report |
 | **Research owner:** turn another paper into a training package | [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md) → `python scripts/rcsl.py install-skill --dry-run` | A human-approved task-design specification and verifiable package |
@@ -96,7 +101,8 @@ flowchart LR
     L1 --> L2[Level 2<br/>Pipeline integrity]
     L2 --> L3[Level 3<br/>Scientific validity]
     L3 --> L4[Level 4<br/>Agent experiment governance]
-    L4 --> T[Trustworthy<br/>research claims]
+    L4 --> C[Capstone<br/>cross-layer incident]
+    C --> T[Trustworthy<br/>research claims]
 ```
 
 | Level | Core question to prove | First public entry |
@@ -105,6 +111,7 @@ flowchart LR
 | 2 · Pipeline integrity | Are data identity, splits, training, and evaluation still intact? | [Level 2](LLM4SBR_research_audit_training_v2/level_2_pipeline_integrity/README.md) |
 | 3 · Scientific validity | Is the comparison fair, and does the evidence support the scientific claim? | [Level 3](LLM4SBR_research_audit_training_v2/level_3_scientific_validity/README.md) |
 | 4 · Agent governance | Are an agent's permissions, budget, approvals, and audit trail controlled? | [Level 4](LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/README.md) |
+| Capstone (not L5) | Can the learner close triage, delegation, blast radius, claim, and communication loops in one cross-layer incident? | [Capstone brief](LLM4SBR_research_audit_training_v2/CAPSTONE_BRIEF.md) |
 
 The four levels answer **where trust first failed**; they are not a complete list of modern programmer capabilities. The complete model adds:
 

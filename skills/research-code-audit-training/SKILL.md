@@ -1,6 +1,6 @@
 ---
 name: research-code-audit-training
-description: Audit a real research-code project with a Git-bound evidence workspace, or design test-driven research-code audit training from a paper and source repository. Use when Codex must establish a G0 research contract, manage findings and evidence, map claims to code, create four-level exercises with subtle runnable faults, train human triage and agent oversight, or build an end-to-end stewardship capstone; includes baseline drift, human gates, public/hidden separation, scientific-validity dossiers, governance timelines, review, and correction.
+description: Audit a real research-code project with a Git-bound evidence workspace, run a resumable human-reviewed RCSL curriculum, or design test-driven research-code audit training from a paper and source repository. Use when Codex must establish a G0 research contract, manage findings and evidence, map claims to code, create or complete four-level exercises with subtle runnable faults, preserve immutable learner attempts and human rubric reviews, train human triage and agent oversight, or build an end-to-end stewardship capstone; includes baseline drift, human gates, public/hidden separation, scientific-validity dossiers, governance timelines, review, retry, and correction.
 ---
 
 # Research Code Audit and Training
@@ -13,7 +13,7 @@ training package.
 
 ## Choose the operating mode first
 
-Use exactly one primary route unless the user explicitly asks for both:
+Use exactly one primary route unless the user explicitly asks for more than one:
 
 1. **Real-project audit:** the user wants to inspect an existing project, manage
    findings/evidence, or produce a review handoff. Read
@@ -23,11 +23,16 @@ Use exactly one primary route unless the user explicitly asks for both:
 2. **Training-package design:** the user wants exercises, a new case, a
    curriculum, candidate mutations, hidden probes, or a capstone. Follow the
    training workflow below.
+3. **Existing curriculum execution:** the user wants to work through the bundled
+   public case, preserve progress, submit a retry, or record human feedback. Use
+   the local `train progress` lifecycle below. Do not redesign the case or inspect
+   isolated instructor material.
 
 If the request is ambiguous, prefer real-project audit when there is one target
-repository and a concrete trust question. Prefer training-package design when
-the requested output is explicitly for learners or assessment. Keep audit
-evidence separate from any later training-case transformation.
+repository and a concrete trust question. Prefer existing curriculum execution
+when the user names the bundled case or learner progress. Prefer training-package
+design when the requested output is a new exercise or assessment. Keep audit
+evidence, learner records, and any later training-case transformation separate.
 
 ## Read the required guidance
 
@@ -50,6 +55,66 @@ Read [domain-adaptation.md](references/domain-adaptation.md) when the paper is n
 
 The remaining sections of this file apply to **training-package design** unless
 they explicitly say otherwise.
+
+## Run the existing curriculum with a resumable record
+
+Create the learner workspace outside this repository and outside every case or
+isolated-material directory:
+
+```bash
+python scripts/rcsl.py train progress init \
+  --output /absolute/path/to/my-training \
+  --learner "declared learner label"
+```
+
+Edit `worksheets/L1.md`, then repeat the same lifecycle for `L2`, `L3`, `L4`,
+and `capstone`:
+
+```bash
+python scripts/rcsl.py train progress check /absolute/path/to/my-training \
+  --target L1
+python scripts/rcsl.py train progress submit /absolute/path/to/my-training \
+  --target L1 --note "first frozen attempt"
+python scripts/rcsl.py train progress status /absolute/path/to/my-training
+```
+
+Submission embeds immutable worksheet bytes and their SHA-256 in one atomically
+replaced `progress.json`. Editing the worksheet afterward prepares a retry; a new
+submission links to, rather than overwrites, the earlier attempt. For retryable
+automation, pass a stable `--operation-id`; the same ID and payload replay the
+original result, while a different payload is refused.
+
+A named human reviewer records observations separately for Recognize, Prove,
+Direct, and Steward:
+
+```bash
+python scripts/rcsl.py train progress review /absolute/path/to/my-training \
+  --target L1 --reviewer "declared reviewer label" --decision revise \
+  --recognize demonstrated --prove partial \
+  --direct not-observed --steward not-observed \
+  --rationale "bounded review rationale" \
+  --strengths "observable strengths" --gaps "requested evidence"
+```
+
+Use only `not-observed`, `partial`, `demonstrated`, or `cannot-assess` for each
+band. Never calculate a band from field counts, candidate letters, or public test
+results. Preserve each review independently; disagreement must remain visible.
+Only a declared human review can pass a task, and a capstone pass requires all
+four observations to be `demonstrated`. This is review-record consistency, not
+scientific certification or authenticated identity.
+
+Export a shareable summary only inside the workspace:
+
+```bash
+python scripts/rcsl.py train progress export /absolute/path/to/my-training \
+  --output /absolute/path/to/my-training/progress-report.md \
+  --format markdown
+```
+
+The default export omits worksheet snapshots and learner identity and
+pseudonymizes reviewer labels. Treat this public case as an Open Demo with honor
+isolation. Neither a local hash nor a directory name makes it a verified blind
+challenge.
 
 ## Establish training-package inputs and authority
 
