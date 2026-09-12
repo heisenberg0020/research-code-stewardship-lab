@@ -4,7 +4,7 @@
 
 > **One research case. Four layers of evidence.** Learn to distinguish code that runs from research that is defensible.
 
-[中文入门](../docs/GETTING_STARTED.md) · [English start guide](../docs/GETTING_STARTED_EN.md) · [Repository map](../REPOSITORY_MAP.md) · [Paper](https://arxiv.org/abs/2402.13840) · [Original implementation](https://github.com/tsinghua-fib-lab/LLM4SBR)
+[中文入门](../docs/GETTING_STARTED.md) · [English start guide](../docs/GETTING_STARTED_EN.md) · [Case File](CASE_FILE.md) · [Competency model](../docs/COMPETENCY_MODEL_EN.md) · [Repository map](../REPOSITORY_MAP.md) · [Paper](https://arxiv.org/abs/2402.13840) · [Original implementation](https://github.com/tsinghua-fib-lab/LLM4SBR)
 
 ## What this course trains
 
@@ -15,6 +15,8 @@ paper specification → implementation behavior → experimental evidence → ag
 ```
 
 The exercise does not reward guessing which candidate looks familiar. It asks for a traceable argument: the location, the violated contract, a minimal counterexample, the causal effect, and the smallest safe repair.
+
+The levels classify where trust first fails. They sit inside a broader stewardship model: a human-approved G0 research contract comes first; seven human capabilities cut across the levels; and a capstone integrates evidence, delegation, incident response, and release judgment. See the [competency model](../docs/COMPETENCY_MODEL_EN.md) and this case's [versioned scope record](CASE_FILE_EN.md).
 
 ## Start in five minutes
 
@@ -78,7 +80,7 @@ A passing public check means the public validator, schema, or smoke contract hel
 
 ### Answer isolation is part of the course design
 
-Learner-facing material and instructor material are intentionally separated. Do not search for or use instructor-only or post-completion material while solving a level; public validators do not import it. The goal is to preserve independent audit reasoning rather than turn the task into answer retrieval.
+Learner-facing material and instructor-oriented material are intentionally separated by convention. Do not search for or use instructor or post-completion material while solving a level; public validators do not import it. Because all material lives in a public Git repository, this is **honor isolation**, not access control or a secure blind assessment. The goal is to preserve independent audit reasoning rather than turn the task into answer retrieval. See the [case release model](../docs/CASE_RELEASE_MODEL_EN.md) for a true split-package Blind Challenge.
 
 ## Optional paper-first route
 
@@ -88,4 +90,6 @@ Before looking at code, you can create a source-blind paper baseline with the [P
 
 - [Framework overview](FRAMEWORK_OVERVIEW.md): why research-code stewardship matters and the complete training framework.
 - [Progression](PROGRESSION.md): the required order and evidence standard for Levels 1–4.
+- [Case File](CASE_FILE_EN.md): scope, provenance, G0 boundary, validation claims, and review triggers for this release.
+- [Competency model](../docs/COMPETENCY_MODEL_EN.md): G0, seven cross-level capabilities, maturity bands, and capstone.
 - [Repository start guide](../docs/GETTING_STARTED.md): choose a learner, reviewer, or research-owner path.

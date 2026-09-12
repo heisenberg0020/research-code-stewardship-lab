@@ -1,7 +1,10 @@
 # Progression
 
-Work through the four levels in numerical order. Each level keeps learner-facing
-materials separate from materials released only after the exercise is finished.
+Read the [Case File](CASE_FILE_EN.md) first so the G0 scope, provenance, permitted
+claims, and validation limits are explicit. Then work through the four levels in
+numerical order. Each level keeps learner-facing materials separate by convention
+from material intended for post-completion review; this public layout is honor
+isolation, not access control.
 
 1. Level 1: prove local tensor, loss, mask, and gradient semantics.
 2. Level 2: reconstruct identity, permutation, metric, and checkpoint lineage.

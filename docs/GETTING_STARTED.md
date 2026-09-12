@@ -4,13 +4,14 @@
 
 **Research Code Stewardship Lab** 帮你判断一套“能运行”的研究代码、实验和 Agent 流程，是否仍然忠实于论文、实验协议与可追溯证据。它不是代码速写教程；它训练的是在 Coding Agent 时代做出有证据的研究判断。
 
-[English](GETTING_STARTED_EN.md) · [仓库地图](../REPOSITORY_MAP.md) · [四级训练课程](../LLM4SBR_research_audit_training_v2/README.md)
+[English](GETTING_STARTED_EN.md) · [仓库地图](../REPOSITORY_MAP.md) · [能力模型](COMPETENCY_MODEL.md) · [四级训练课程](../LLM4SBR_research_audit_training_v2/README.md)
 
 ## 先选你的目标
 
 | 你是谁 | 先做什么 | 你会得到什么 |
 | --- | --- | --- |
 | **Learner（学习者）** | 用 LLM4SBR 案例从 Level 1 开始完成一次审计 | 一份包含定位、违反的 contract、反例、因果影响和安全修复的证据链 |
+| **Project owner / Auditor（项目负责人或审计员）** | 为自己的项目建立独立审计工作区 | G0 研究契约、分诊卡、Agent 委派合同和证据护照 |
 | **Reviewer / Maintainer（审阅者或维护者）** | 运行公开检查，审查训练包的文档、接口与验证入口 | 一份可复现的公开检查结果，以及需要复审的风险清单 |
 | **Research owner（研究负责人）** | 先冻结论文—代码—实验协议，再用 Skill 设计新的训练包 | 一份经人工批准的四级设计规格，而不是未经批准的候选代码 |
 
@@ -76,7 +77,37 @@ python LLM4SBR_research_audit_training_v2/run_all_public_checks.py
 
 ---
 
-## 路径 C：我是研究负责人，想为另一篇论文建立训练
+## 路径 C：我正在审计一个真实项目
+
+先选择当前要检查的“首个失效契约”层级，再在被审计项目之外创建工作区。例如，怀疑数据身份或 checkpoint 流程时从 Level 2 开始：
+
+```bash
+python scripts/rcsl.py init-audit --level 2 --output ../my-project-audit
+```
+
+命令只复制四份公开模板和一份工作区元数据，不读取教师材料、不修改目标项目，也不覆盖已有目录。接着编辑新目录中的：
+
+| 文件 | 由你填写的决定或证据 |
+| --- | --- |
+| `research-contract-template.md` | G0 的问题、允许主张、来源/许可、保护边界、预算和最终人类负责人 |
+| `triage-card-template.md` | 异常、影响面、竞争假设、最小排查与停止/升级条件 |
+| `delegation-contract-template.md` | Agent 能做什么、不能做什么、验收证据和人工审批点 |
+| `evidence-passport-template.md` | 一项发现的准确位置、首个失效契约、反例、因果影响、修复和签字决定 |
+
+将每个双花括号占位项替换为证据；未知时写明 `Unknown — 原因与负责人`，不要猜测。随时查看进度：
+
+```bash
+python scripts/rcsl.py status-audit ../my-project-audit
+python scripts/rcsl.py lint-audit ../my-project-audit
+```
+
+`lint-audit` 返回成功只表示文件、固定章节和待填项在结构上完整，**不表示研究问题正当、审计发现正确或科学结论获批**。这些决定仍由具名的人类负责人审核。
+
+七项负责人能力、四档成熟度和 capstone 见 [现代研究程序员能力模型](COMPETENCY_MODEL.md)。
+
+---
+
+## 路径 D：我是研究负责人，想为另一篇论文建立训练
 
 这个仓库提供可复用的 [`research-code-audit-training` Skill](../skills/research-code-audit-training/SKILL.md)，将“论文 + 源码 + 实验协议”转为四级审计训练，而不是直接代写一个实验项目。
 
@@ -111,7 +142,7 @@ $research-code-audit-training
 
 ### 1. 答案隔离保护训练价值
 
-课程将教师材料与学习者可见材料分开。完成某一关的公开题目、运行公开检查并写完证据链之前，不要搜索、读取或引用标明为教师专用或完成后解锁的材料。公开验证器也不应依赖这些材料。
+课程将教师材料与学习者可见材料分开。完成某一关的公开题目、运行公开检查并写完证据链之前，不要搜索、读取或引用标明为教师专用或完成后解锁的材料。公开验证器也不应依赖这些材料。由于它们位于同一公开仓库，这只是 honor isolation，不是访问控制；真正盲测应按 [案例发布模型](CASE_RELEASE_MODEL.md) 分包。
 
 ### 2. `public PASS` 只是开始
 
@@ -129,5 +160,6 @@ $research-code-audit-training
 
 - 想理解所有目录：看 [仓库地图](../REPOSITORY_MAP.md)。
 - 想直接开始 LLM4SBR 案例：看 [四级训练课程](../LLM4SBR_research_audit_training_v2/README.md)。
+- 想审计自己的项目：先读 [能力模型](COMPETENCY_MODEL.md)，再用 `init-audit` 建立证据工作区。
 - 想先建立不看源码的论文理解：看 [Source-Blind Protocol](PAPER_ONLY_REPRODUCTION_PROTOCOL.md)。
 - 想把流程用于自己的论文：看 [Skill 主文件](../skills/research-code-audit-training/SKILL.md)。

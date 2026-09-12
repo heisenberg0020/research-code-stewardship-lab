@@ -4,13 +4,14 @@
 
 **Research Code Stewardship Lab** helps you decide whether runnable research code, experiments, and agent workflows still honor the paper, experimental protocol, and evidence trail behind them. It is not a code-writing speed course. It develops evidence-based research judgment for the coding-agent era.
 
-[中文指南](GETTING_STARTED.md) · [Repository map](../REPOSITORY_MAP.md) · [Four-level course](../LLM4SBR_research_audit_training_v2/README.md)
+[中文指南](GETTING_STARTED.md) · [Repository map](../REPOSITORY_MAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Four-level course](../LLM4SBR_research_audit_training_v2/README.md)
 
 ## Choose your path
 
 | You are a… | Start with… | You will leave with… |
 | --- | --- | --- |
 | **Learner** | Audit the LLM4SBR case study from Level 1 | An evidence chain: location, violated contract, counterexample, causal effect, and safe repair |
+| **Project owner / auditor** | Create a separate audit workspace for your own project | A G0 research contract, triage card, agent delegation contract, and evidence passport |
 | **Reviewer / maintainer** | Run public checks and review the package contract, documentation, and entry points | A reproducible public-check report and a list of risks that still need human review |
 | **Research owner** | Freeze the paper–code–experiment protocol, then design a new package with the Skill | A human-approved four-level design specification—not unreviewed candidate code |
 
@@ -76,7 +77,37 @@ The expected output is a traceable maintenance note: what changed, which public 
 
 ---
 
-## Path C: Build a new package for another paper
+## Path C: Audit a real project
+
+Choose the level whose contract is currently the earliest suspected failure, then create a workspace outside the audited project. For example, start at Level 2 when investigating data identity or checkpoint flow:
+
+```bash
+python scripts/rcsl.py init-audit --level 2 --output ../my-project-audit
+```
+
+The command copies four public templates plus workspace metadata. It does not read instructor material, modify the target project, or overwrite an existing path. Edit these files in the new directory:
+
+| File | Decision or evidence you provide |
+| --- | --- |
+| `research-contract-template.md` | G0 question, permitted claim, provenance/licenses, protected boundaries, budget, and accountable human owner |
+| `triage-card-template.md` | Signal, blast radius, competing hypotheses, minimum investigation, and stop/escalation conditions |
+| `delegation-contract-template.md` | What an agent may and may not do, required evidence, and human approval points |
+| `evidence-passport-template.md` | Exact location, first failed contract, counterexample, causal impact, repair, and signed decision for one finding |
+
+Replace every double-braced prompt with evidence. When something is unknown, write `Unknown — reason and owner` rather than guessing. Check progress at any time:
+
+```bash
+python scripts/rcsl.py status-audit ../my-project-audit
+python scripts/rcsl.py lint-audit ../my-project-audit
+```
+
+A successful `lint-audit` means only that files, fixed sections, and prompts are structurally complete. It **does not** establish that the research question is legitimate, a finding is correct, or a scientific claim is approved. Those decisions remain with a named human owner.
+
+See the [modern research programmer competency model](COMPETENCY_MODEL_EN.md) for the seven accountable capabilities, four maturity bands, and capstone.
+
+---
+
+## Path D: Build a new package for another paper
 
 The reusable [`research-code-audit-training` Skill](../skills/research-code-audit-training/SKILL.md) turns a paper, source tree, and experimental protocol into a four-level audit exercise. It does not simply write a replacement research project.
 
@@ -111,7 +142,7 @@ The expected output is a reviewable specification that connects paper claims, co
 
 ### 1. Answer isolation protects the learning value
 
-Instructor materials and learner-visible materials are intentionally separated. Before you finish a level’s public brief, public checks, and evidence chain, do not search for, read, or cite material marked as instructor-only or unlocked after completion. Public verifiers should not depend on that material either.
+Instructor material and learner-visible material are intentionally separated. Before you finish a level’s public brief, public checks, and evidence chain, do not search for, read, or cite material marked for instructors or post-completion review. Public verifiers should not depend on it. Because both surfaces live in one public repository, this is honor isolation rather than access control; a true blind assessment must use the split packages in the [case release model](CASE_RELEASE_MODEL_EN.md).
 
 ### 2. `public PASS` is only the beginning
 
@@ -129,5 +160,6 @@ Every audit must therefore return to primary evidence, the frozen protocol, and 
 
 - Need the full directory guide? Read the [repository map](../REPOSITORY_MAP.md).
 - Ready to start LLM4SBR? Open the [four-level course](../LLM4SBR_research_audit_training_v2/README.md).
+- Auditing your own project? Read the [competency model](COMPETENCY_MODEL_EN.md), then create an evidence workspace with `init-audit`.
 - Want a paper-first, source-blind baseline? Use the [Source-Blind Protocol](PAPER_ONLY_REPRODUCTION_PROTOCOL.md).
 - Want to adapt the workflow to your paper? Read the [Skill](../skills/research-code-audit-training/SKILL.md).

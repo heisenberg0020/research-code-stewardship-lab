@@ -6,18 +6,28 @@ This public repository provides a research-code stewardship training system buil
 
 - [LLM4SBR paper](https://arxiv.org/abs/2402.13840): the official paper used as the scientific specification.
 - [Original LLM4SBR repository](https://github.com/tsinghua-fib-lab/LLM4SBR): the official implementation source.
-- `docs/GETTING_STARTED.md`: Chinese task-oriented start guide for learners, reviewers, maintainers, and research owners.
+- `docs/GETTING_STARTED.md`: Chinese task-oriented start guide for learners, auditors, reviewers, maintainers, and research owners.
 - `docs/GETTING_STARTED_EN.md`: English version of the task-oriented start guide.
+- `docs/COMPETENCY_MODEL.md`: Chinese G0 + L1–L4 + seven cross-level capabilities and maturity model.
+- `docs/COMPETENCY_MODEL_EN.md`: English version of the competency model.
+- `docs/CASE_RELEASE_MODEL.md`: Chinese Open Demo and access-controlled Blind Challenge release model.
+- `docs/CASE_RELEASE_MODEL_EN.md`: English version of the case release model.
 - `docs/images/research-code-stewardship-banner.svg`: the repository’s self-contained Paper → Code → Evidence → Governance banner.
 - `requirements.txt`: learner-facing runtime dependency list for local public checks.
-- `scripts/rcsl.py`: public-only command entry point (`overview`, `doctor`, `start`, and `validate`).
+- `scripts/rcsl.py`: public-only command entry point for course navigation, validation, and local audit workspaces (`init-audit`, `status-audit`, and `lint-audit`).
 - `LLM4SBR_code_judgement_training/`: the earlier local algorithm-code judgement exercise.
 - `LLM4SBR_research_audit_training_v2/`: the four-level training package and its course hub.
+  - `CASE_FILE.md` / `CASE_FILE_EN.md`: versioned scope, provenance, G0 boundary, Open Demo status, and review triggers for the current case.
 - `tests/research_audit_training_v2/`: package, shared-contract, Level 1, and Level 2 acceptance tests.
 - `docs/superpowers/specs/`: approved four-level design specification.
 - `docs/superpowers/plans/`: test-driven implementation plan.
 - `docs/implementation-audit/`: RED/GREEN evidence, review decisions, corrections, and task reports.
-- `skills/research-code-audit-training/`: reusable Codex Skill for generating equivalent exercises from another paper and source repository.
+- `skills/research-code-audit-training/`: reusable Codex Skill for generating equivalent exercises and stewardship evidence from another paper and source repository.
+  - `assets/research-contract-template.md`: G0 question, legitimacy, authority, and stopping gate.
+  - `assets/triage-card-template.md`: rapid localization and bounded investigation record.
+  - `assets/delegation-contract-template.md`: human–Agent authority and evidence contract.
+  - `assets/evidence-passport-template.md`: one finding or trust decision with its complete evidence chain.
+  - `references/stewardship-competencies.md`: portable two-axis competency model for the Skill.
 
 ## Current implementation status
 
@@ -28,9 +38,9 @@ This public repository provides a research-code stewardship training system buil
 
 All four levels have focused tests, isolated answer manifests, public checks, and external hidden verification.
 
-## Answer isolation
+## Answer isolation and release mode
 
-Directories named `DO_NOT_OPEN_UNTIL_FINISHED/` contain instructor-only mappings and hidden probes. Learners should work only from public materials until they have submitted their audit.
+Directories named `DO_NOT_OPEN_UNTIL_FINISHED/` contain instructor-oriented mappings and probes. In this public repository they provide **honor isolation only**, not access control; the current case is an Open Demo. Learners should work only from public materials until they have submitted their audit. See `docs/CASE_RELEASE_MODEL.md` for the separate packages required by a genuinely blind challenge.
 
 ## Licensing and provenance
 

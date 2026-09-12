@@ -21,6 +21,7 @@
   <a href="#quick-start">Quick start</a> ·
   <a href="#choose-your-path">Choose your path</a> ·
   <a href="#four-levels">Four levels</a> ·
+  <a href="docs/COMPETENCY_MODEL_EN.md">Competency model</a> ·
   <a href="#what-public-pass-means">Validation boundary</a> ·
   <a href="#deep-dive">Deep dive</a>
 </p>
@@ -51,6 +52,15 @@ Continue Level 2 → 3 → 4 in sequence. At any point, validate the runnable **
 python scripts/rcsl.py validate
 ```
 
+To audit your own research project rather than only solve the case study, create a separate evidence workspace:
+
+```bash
+python scripts/rcsl.py init-audit --level 1 --output my-audit
+python scripts/rcsl.py status-audit my-audit
+```
+
+This creates templates for the G0 research contract, rapid triage, agent delegation boundary, and evidence passport. It does not modify the audited project or make a scientific decision for you.
+
 For role-specific instructions, read the [Getting started guide](docs/GETTING_STARTED_EN.md) ([中文](docs/GETTING_STARTED.md)).
 
 ## Choose your path
@@ -59,6 +69,7 @@ For role-specific instructions, read the [Getting started guide](docs/GETTING_ST
 | --- | --- | --- |
 | **Learner:** spot research code that runs but should not be trusted | [Four-level package](LLM4SBR_research_audit_training_v2/README.md) → `python scripts/rcsl.py start --level 1` | An evidence-backed audit record, rather than only a candidate answer |
 | **Reproducer / reviewer:** understand the paper before the implementation | [Source-blind paper-study protocol](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md) | A `PRE_AUDIT_BASELINE` for equations, data flow, metrics, and claim boundaries |
+| **Project owner / auditor:** audit a real project and manage its evidence | `python scripts/rcsl.py init-audit --level 1 --output my-audit` → [competency model](docs/COMPETENCY_MODEL_EN.md) | A research contract, triage record, delegation boundary, and evidence passport |
 | **Research owner:** turn another paper into a training package | [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md) → `python scripts/rcsl.py install-skill --dry-run` | A human-approved task-design specification and verifiable package |
 | **Maintainer:** check the health of the repository | `python scripts/rcsl.py doctor` → `python scripts/rcsl.py validate` | Public-check results and a clear debugging entry point |
 
@@ -80,10 +91,18 @@ flowchart LR
 | 3 · Scientific validity | Is the comparison fair, and does the evidence support the scientific claim? | [Level 3](LLM4SBR_research_audit_training_v2/level_3_scientific_validity/README.md) |
 | 4 · Agent governance | Are an agent's permissions, budget, approvals, and audit trail controlled? | [Level 4](LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/README.md) |
 
+The four levels answer **where trust first failed**; they are not a complete list of modern programmer capabilities. The complete model adds:
+
+- a preceding **G0 Research Contract** that freezes the question, allowed claim, data rights, ethical boundaries, budgets, and human-reserved decisions;
+- seven capabilities that cut across every level: research judgment, rapid triage, delegation and agent assurance, architecture and maintainability, security/privacy/ethics, incident response, and evidence communication;
+- four maturity stages—`Recognize → Prove → Direct → Steward`—and a capstone spanning G0–L4.
+
+Read the [complete competency model](docs/COMPETENCY_MODEL_EN.md) ([中文](docs/COMPETENCY_MODEL.md)). It preserves the precise L1–L4 taxonomy while covering the decisions a real project owner cannot safely delegate to an agent.
+
 ## What public PASS means
 
 > **A public PASS says only that the public training materials satisfy their package contract. It does not certify a paper's conclusion or replace scientific judgment.**
-> Until you submit your audit, use learner-visible materials only; instructor answers, mutation locations, and hidden probes remain isolated.
+> Until you submit your audit, use learner materials only. This public repository provides **honor isolation**, not access control or a secure blind assessment; see the [case release model](docs/CASE_RELEASE_MODEL_EN.md) for true split packaging.
 
 ## Deep dive
 
@@ -131,12 +150,13 @@ README.md                              Chinese overview and general framework
 README_EN.md                           This English overview
 REPOSITORY_MAP.md                      Repository navigation
 requirements.txt                       Learner dependency for local public checks
-scripts/rcsl.py                        Public-material navigation, environment checks, and validation
+scripts/rcsl.py                        Public navigation, validation, and local audit-workspace entry point
 LICENSE                                Apache-2.0 license for original software
 DOCUMENTATION_LICENSE.md               CC BY 4.0 notice for original documentation
 THIRD_PARTY_NOTICES.md                 Third-party sources, exclusions, and access links
 LLM4SBR_code_judgement_training/       Earlier five-candidate code-judgment exercise
 LLM4SBR_research_audit_training_v2/    Complete four-level audit package
+  CASE_FILE_EN.md                      Scope, provenance, Open Demo status, and review triggers
   level_1_algorithm_semantics/         Formula and algorithm semantics
   level_2_pipeline_integrity/          Data, training, and evaluation integrity
   level_3_scientific_validity/         Fairness, evidence, and scientific claims
@@ -146,6 +166,8 @@ skills/research-code-audit-training/   Portable training-package generation Skil
 docs/                                  Protocols, examples, and implementation decisions
   GETTING_STARTED.md                   Task-oriented Chinese start guide
   GETTING_STARTED_EN.md                Task-oriented English start guide
+  COMPETENCY_MODEL_EN.md               G0, four-level axis, seven capabilities, maturity, and capstone
+  CASE_RELEASE_MODEL_EN.md              Open Demo and true Blind Challenge release boundaries
   PAPER_ONLY_REPRODUCTION_PROTOCOL.md  Source-blind paper study and clean-room protocol
   examples/LLM4SBR_PAPER_STUDY_GUIDE.md
                                         Source-blind study example
@@ -160,7 +182,7 @@ tests/                                 Package contracts and validation entry po
 4. Work through the [four-level package](LLM4SBR_research_audit_training_v2/README.md), recording evidence rather than only selecting a candidate letter.
 5. If you want to generate a package for another paper, install and use the [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md).
 
-Public learner materials intentionally do not contain candidate answers, mutation locations, or hidden probes. Teacher-only answers and verification artifacts remain isolated.
+Public learner materials intentionally do not contain candidate answers, mutation locations, or hidden probes. Instructor-oriented material is separated by convention in this public repository; that boundary is honor isolation, not confidentiality.
 
 ## End-to-end workflow for paper reproduction and research-code stewardship training
 
@@ -185,7 +207,7 @@ flowchart TD
     subgraph P2["Phase B · Test-Driven Generation and Isolated Verification"]
         TDD["RED → implement → GREEN → review → correct"] --> LEVELS["Generate Levels 1–4<br/>semantics → pipeline → validity → governance"]
         LEVELS --> PUBLIC["Learner area<br/>candidates · ANSWER_SHEET · public smoke checks"]
-        LEVELS --> HIDDEN["Teacher-only area<br/>answer map · mutation ledger · hidden probes · minimal fixes"]
+        LEVELS --> HIDDEN["Instructor area<br/>public case uses honor isolation · hidden probes · minimal fixes"]
         PUBLIC --> VERIFY{"Do regression and<br/>answer-leakage checks pass?"}
         HIDDEN --> VERIFY
         VERIFY -- "No" --> TDD
@@ -239,6 +261,8 @@ The four audit objects are:
 
 The agent can read, design, implement, mutate, test, and package the materials. A human must freeze the scientific protocol, approve the design, resolve ambiguity, and make the final judgment about evidence and claims.
 
+The expanded Skill also establishes a **G0 research-contract gate** before the levels and uses seven cross-level capabilities plus four maturity bands to describe how a human recognizes, proves, directs, and stewards the work. L1–L4 remain the precise taxonomy for the first failed contract rather than growing into an unbounded list of topics.
+
 ### 0.2 Inputs and safety boundaries
 
 Provide the Skill with:
@@ -256,6 +280,7 @@ If the paper and source disagree, the Skill must report the conflict and its evi
 ### 0.3 Skill files
 
 - [Main Skill](skills/research-code-audit-training/SKILL.md) — trigger conditions, workflow, TDD sequence, and material isolation;
+- [Stewardship competency model](skills/research-code-audit-training/references/stewardship-competencies.md) — G0, seven cross-level capabilities, four maturity bands, role routes, and capstone;
 - [Four-level framework](skills/research-code-audit-training/references/four-level-framework.md) — level boundaries and error families;
 - [Level 3/4 implementation lessons](skills/research-code-audit-training/references/level3-level4-implementation-lessons.md) — structured evidence for scientific dossiers and governance timelines;
 - [Quality gates](skills/research-code-audit-training/references/quality-gates.md) — single-error, anti-guessing, false-positive, RED/GREEN, and release checks;
@@ -263,6 +288,8 @@ If the paper and source disagree, the Skill must report the conflict and its evi
 - [Domain adaptation guide](skills/research-code-audit-training/references/domain-adaptation.md) — adapting session, candidate, checkpoint, and related concepts to other fields;
 - [Design-spec template](skills/research-code-audit-training/assets/design-spec-template.md) — specification to approve before implementation;
 - [Answer-sheet template](skills/research-code-audit-training/assets/answer-sheet-template.md) — evidence-based learner response format;
+- [G0 research-contract template](skills/research-code-audit-training/assets/research-contract-template.md) — question, provenance/licensing, permitted claim, protected boundaries, and human sign-off;
+- [Rapid-triage template](skills/research-code-audit-training/assets/triage-card-template.md), [agent delegation contract](skills/research-code-audit-training/assets/delegation-contract-template.md), and [evidence passport](skills/research-code-audit-training/assets/evidence-passport-template.md) — auditable records for real-project judgment;
 - [Package validator](skills/research-code-audit-training/scripts/validate_training_package.py) — structural and leakage checks.
 
 ### 0.4 Install in Codex

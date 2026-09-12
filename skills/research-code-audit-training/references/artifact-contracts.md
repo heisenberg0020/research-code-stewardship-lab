@@ -5,10 +5,15 @@
 ```text
 research_audit_training/
 ├── README.md
+├── CASE_FILE.md
 ├── FRAMEWORK_OVERVIEW.md
 ├── PROGRESSION.md
 ├── run_all_public_checks.py
 ├── verify_package.py
+├── stewardship/
+│   ├── RESEARCH_CONTRACT.md
+│   ├── DELEGATION_CONTRACT.md
+│   └── EVIDENCE_PASSPORTS/
 ├── shared/
 ├── level_1_algorithm_semantics/
 │   ├── README.md
@@ -32,6 +37,11 @@ research_audit_training/
 ```
 
 Keep development acceptance tests and the root hidden-verification entry point outside this student tree.
+
+`CASE_FILE.md` records a stable case ID, source revisions, release mode, G0
+boundary, validation claims, known limits, maintainer, and review triggers. The
+`stewardship/` artifacts record accountable decisions; an automated validator
+may check their structure but cannot approve their scientific content.
 
 ## Hidden manifest
 
@@ -90,6 +100,11 @@ Allow explicit null/blank fields only where the schema declares them nullable.
 
 Rebuild report manifests deterministically from ledger rows ordered by start time. Include run IDs, failed run IDs, claim IDs, terminal-event references, success count, and failure count.
 
-## Public versus hidden verification
+## Public versus controlled verification
 
 Public checks validate completeness, parsing, interface compatibility, finite output, bounded execution, and neutral stdout. Hidden checks validate semantics, lineage, scientific rules, governance, repairs, uniqueness, and mapping secrecy.
+
+In a public Open Demo, a same-repository instructor directory provides honor
+isolation only. In a Blind Challenge, keep the Challenge Package, Evaluator
+Package, and Maintainer Record in separate access domains from the outset. Never
+claim confidentiality merely because a public directory has a warning name.

@@ -21,6 +21,7 @@
   <a href="#quick-start">Quick start</a> ·
   <a href="#choose-your-path">选择路径</a> ·
   <a href="#four-levels">四级训练</a> ·
+  <a href="docs/COMPETENCY_MODEL.md">能力模型</a> ·
   <a href="#what-public-pass-means">验证边界</a> ·
   <a href="#deep-dive">深入了解</a>
 </p>
@@ -51,6 +52,15 @@ python scripts/rcsl.py start --level 1
 python scripts/rcsl.py validate
 ```
 
+如果你要审计自己的研究项目，而不只是完成案例题，可以创建一个独立的证据工作区：
+
+```bash
+python scripts/rcsl.py init-audit --level 1 --output my-audit
+python scripts/rcsl.py status-audit my-audit
+```
+
+它会生成 G0 研究契约、快速分诊、Agent 委派边界和证据护照四份模板；不会修改被审计项目，也不会替你作出科学结论。
+
 完整的按角色说明见 [开始指南](docs/GETTING_STARTED.md)（[English](docs/GETTING_STARTED_EN.md)）。
 
 ## Choose your path
@@ -59,6 +69,7 @@ python scripts/rcsl.py validate
 | --- | --- | --- |
 | **学习者**：练习发现“可运行但不可信”的科研代码 | [四级训练包](LLM4SBR_research_audit_training_v2/README.md) → `python scripts/rcsl.py start --level 1` | 基于证据的审计记录，而不只是一个候选答案 |
 | **复现者 / 审稿人**：先理解论文，再看源码 | [Source-blind 论文学习协议](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md) | `PRE_AUDIT_BASELINE`：公式、数据流、指标和 claim 边界 |
+| **项目负责人 / 审计员**：审计一个真实项目并管理证据 | `python scripts/rcsl.py init-audit --level 1 --output my-audit` → [能力模型](docs/COMPETENCY_MODEL.md) | 研究契约、分诊记录、委派边界与逐项证据护照 |
 | **研究负责人**：把另一篇论文变成训练包 | [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md) → `python scripts/rcsl.py install-skill --dry-run` | 需经人类批准的题目设计规格与可验证训练包 |
 | **维护者**：确认仓库是否仍健康 | `python scripts/rcsl.py doctor` → `python scripts/rcsl.py validate` | 公开检查结果与下一步排错入口 |
 
@@ -80,10 +91,18 @@ flowchart LR
 | 3 · Scientific validity | 比较是否公平，证据是否真的支撑科学主张？ | [Level 3](LLM4SBR_research_audit_training_v2/level_3_scientific_validity/README.md) |
 | 4 · Agent governance | Agent 的权限、预算、审批和审计轨迹是否受控？ | [Level 4](LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/README.md) |
 
+四级回答的是“**信任首先在哪一层失效**”，不是现代程序员能力的全部清单。完整框架在四级之外加入：
+
+- 前置 **G0 Research Contract**：先冻结研究问题、允许主张、数据权利、伦理边界、预算与人类保留决策；
+- 贯穿各层的七项负责人能力：研究判断、快速分诊、委派与 Agent 保障、架构维护、安全隐私伦理、事故响应、证据沟通；
+- `Recognize → Prove → Direct → Steward` 四档成熟度，以及跨 G0–L4 的最终 capstone。
+
+详见 [完整能力模型](docs/COMPETENCY_MODEL.md)（[English](docs/COMPETENCY_MODEL_EN.md)）。这保持了 L1–L4 的清晰分类，同时覆盖真实项目中不能交给 Agent 自动拍板的责任。
+
 ## What public PASS means
 
 > **公开检查 PASS 只说明公开训练材料满足其包契约；它不等于论文结论为真，也不替代你的科学判断。**
-> 请在提交审计结果之前，只使用公开材料；教师答案、变异位置和隐藏探针继续保持隔离。
+> 请在提交审计结果之前，只使用学习者材料。当前公开仓库采用的是约定式 **honor isolation**，不是访问控制或安全盲测；真正的盲测分包见 [案例发布模型](docs/CASE_RELEASE_MODEL.md)。
 
 ## Deep dive
 
@@ -95,7 +114,7 @@ flowchart LR
 而训练人识别那些**能够编译、能够运行、甚至能够产出看似合理结果，却已经破坏论文科学含义**的细微错误。
 
 仓库以 LLM4SBR（Session-based Recommendation with Large Language Models）为首个完整案例，
-提供论文与原始实现的正式来源链接、四级候选代码题、答案隔离材料、验证脚本，以及一个可以迁移到其他论文的
+提供论文与原始实现的正式来源链接、四级候选代码题、约定式隔离材料、验证脚本，以及一个可以迁移到其他论文的
 `research-code-audit-training` Skill。它适合用来训练研究程序员、研究生、研究工程师，以及负责监督
 Coding Agent 的实验负责人。
 
@@ -132,12 +151,13 @@ README.md                              项目简介与通用训练框架
 README_EN.md                           英文版项目简介
 REPOSITORY_MAP.md                      全仓库导航
 requirements.txt                       本地公开检查的学习者依赖
-scripts/rcsl.py                        公开材料导航、环境检查与四级验证入口
+scripts/rcsl.py                        公开材料导航、验证与本地审计证据工作区入口
 LICENSE                                原创软件的 Apache-2.0 许可证
 DOCUMENTATION_LICENSE.md               原创文档的 CC BY 4.0 许可说明
 THIRD_PARTY_NOTICES.md                 第三方来源、排除项与获取方式
 LLM4SBR_code_judgement_training/       初版五候选代码辨认题
 LLM4SBR_research_audit_training_v2/    完整四级研究代码审计训练包
+  CASE_FILE.md                         当前案例的范围、来源、Open Demo 状态与复审条件
   level_1_algorithm_semantics/         算法语义与公式实现
   level_2_pipeline_integrity/          数据、训练、评估流水线完整性
   level_3_scientific_validity/         实验公平性、证据链与科学主张
@@ -147,6 +167,8 @@ skills/research-code-audit-training/   可迁移的题目生成 Skill 及参考�
 docs/                                  复现协议、实施审核和设计决策记录
   GETTING_STARTED.md                   按学习者 / 维护者 / 研究负责人分流的开始指南
   GETTING_STARTED_EN.md                英文开始指南
+  COMPETENCY_MODEL.md                  G0、四级纵轴、七项横向能力、成熟度与 capstone
+  CASE_RELEASE_MODEL.md                Open Demo 与真正 Blind Challenge 的发布边界
   PAPER_ONLY_REPRODUCTION_PROTOCOL.md  Source-blind 论文学习与 clean-room 复现双模式协议
   examples/LLM4SBR_PAPER_STUDY_GUIDE.md 协议生成的 source-blind 论文学习参考样例
 tests/                                 包契约、四级测试与隐藏验证入口
@@ -189,7 +211,7 @@ flowchart TD
     subgraph P2["阶段 B · 测试驱动生成与隔离验证"]
         TDD["RED → 实现 → GREEN → 审核 → 修正"] --> LEVELS["生成 Level 1–4<br/>算法语义 → 流水线 → 科学有效性 → Agent 治理"]
         LEVELS --> PUBLIC["学员区<br/>候选材料 · ANSWER_SHEET · 公共 smoke checks"]
-        LEVELS --> HIDDEN["教师隔离区<br/>答案映射 · 变异账本 · hidden probes · 最小修复"]
+        LEVELS --> HIDDEN["教师材料区<br/>公开案例仅 honor isolation · hidden probes · 最小修复"]
         PUBLIC --> VERIFY{"总回归与泄题检查通过？"}
         HIDDEN --> VERIFY
         VERIFY -- "否" --> TDD
@@ -230,7 +252,7 @@ flowchart TD
 ### 0.1 Skill 的功能与训练目标
 
 `research-code-audit-training` 不是一个新的模型，也不是替代 Codex 的独立程序；它是一组供 Coding
-Agent 遵循的专业工作规范。它把一篇论文和其源代码转换为可验证的“四级盲审训练包”：每个 Level
+Agent 遵循的专业工作规范。它把一篇论文和其源代码转换为可验证的“四级候选审计训练包”：每个 Level
 提供 5 份接口一致、能够完成受限运行的候选实现，其中 1 份忠实实现论文，另外 4 份各包含一个主要的
 隐蔽错误。
 
@@ -244,6 +266,8 @@ Agent 遵循的专业工作规范。它把一篇论文和其源代码转换为�
 因此，训练目标不是发现 syntax error，而是判断“一个能运行的实验系统是否仍然代表论文声称的科学
 实验”。Agent 负责阅读、构建、变异、测试和整理材料；人负责确认论文解释、冻结实验协议、批准设计，
 并根据证据判断候选是否可信。Skill 会先生成设计规格，只有在人工确认后才进入候选实现阶段。
+
+扩展后的 Skill 还会在四级之前建立 **G0 研究契约门**，并用七项横向能力与四档成熟度描述“人需要如何发现、证明、委派和负责”。四级继续用于定位首个失效契约，不会被无限增加的新 Level 稀释。
 
 ### 0.2 输入、目录与安全边界
 
@@ -266,6 +290,7 @@ Skill 输出的设计规格并确认实验规则。论文、原始源码和数�
 ### 0.3 本仓库里 Skill 文件在哪里
 
 - [Skill 主文件](skills/research-code-audit-training/SKILL.md)：触发条件、完整工作流、TDD 顺序、公开与隐藏材料隔离规则；
+- [Stewardship 能力模型](skills/research-code-audit-training/references/stewardship-competencies.md)：G0、七项横向能力、四档成熟度、角色路线与 capstone；
 - [四级能力与错误边界](skills/research-code-audit-training/references/four-level-framework.md)：Level 1–4 的归类规则和通用错误家族；
 - [Level 3/4 实施经验](skills/research-code-audit-training/references/level3-level4-implementation-lessons.md)：科学 dossier 与 Agent 治理时间线的结构化证据要求；
 - [质量门与修正方法](skills/research-code-audit-training/references/quality-gates.md)：单一错误、反猜题、误报控制及 RED/GREEN 审核要求；
@@ -273,6 +298,8 @@ Skill 输出的设计规格并确认实验规则。论文、原始源码和数�
 - [跨领域适配指南](skills/research-code-audit-training/references/domain-adaptation.md)：将 session、candidate、checkpoint 等概念映射到医疗、图学习、强化学习等领域；
 - [设计规格模板](skills/research-code-audit-training/assets/design-spec-template.md)：实施前交给用户确认的四级题目规格；
 - [学员答案模板](skills/research-code-audit-training/assets/answer-sheet-template.md)：要求提交定位、依据、反例、因果影响和修复；
+- [G0 研究契约模板](skills/research-code-audit-training/assets/research-contract-template.md)：问题、来源/许可、允许主张、保护边界与人类签字；
+- [快速分诊模板](skills/research-code-audit-training/assets/triage-card-template.md)、[Agent 委派合同](skills/research-code-audit-training/assets/delegation-contract-template.md)与[证据护照](skills/research-code-audit-training/assets/evidence-passport-template.md)：把真实项目的判断过程保存为可审计证据；
 - [训练包静态验证器](skills/research-code-audit-training/scripts/validate_training_package.py)：检查四级结构和公开材料泄题风险。
 
 ### 0.4 安装到 Codex
@@ -661,8 +688,9 @@ Level 4 虽然编号最后，却不是只发生在项目末尾。它是覆盖需
 | 3 | 五份完整实验 dossier | baseline、预算、统计、报告 | 公平性、信息条件、选择性报告、推断不足 | 配置对照、账本重建、预注册统计规则 |
 | 4 | 五份 Agent 运行与治理记录 | 权限、审批、资源、日志、停止条件 | 越权、超范围、记录破坏、受保护证据适应 | 协议逐条核对、时间线与审批链审计 |
 
-四级均采用“一份可信、四份各含一个主要错误”的盲审形式，但被审查对象逐步从代码片段
-扩展到流水线、科学证据包和 Agent 行动记录。
+四级均采用“一份可信、四份各含一个主要错误”的候选盲判形式，但被审查对象逐步从代码片段
+扩展到流水线、科学证据包和 Agent 行动记录。当前公开案例只能依靠学习者不查看教师材料的约定，
+不构成访问受控的 Blind Challenge。
 
 ## 5. Level 1：算法语义正确性
 
@@ -991,7 +1019,7 @@ Level 3 是单一比较或报告规则违规，Level 4 是一次未经授权或�
 ## 16. 与当前 LLM4SBR 训练的关系
 
 LLM4SBR v2 已成为这套通用框架的第一份完整、可运行实例。旧版训练主要覆盖局部算法审计；
-v2 已实现五候选盲审、公开检查、隔离答案和隐藏探针，并按以下抽象能力组织：
+v2 已实现五候选证据审计、公开检查、约定式答案隔离和隐藏探针，并按以下抽象能力组织：
 
 - 论文核心公式、张量语义和梯度契约用于 Level 1；
 - 会话数据、跨模态身份、训练状态和评估协议用于 Level 2；
