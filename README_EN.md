@@ -36,7 +36,7 @@ RCSL now exposes two explicit modes. Both reuse G0, L1–L4, Evidence Passports,
 | **Mode Train** | Train human research-code judgment with public cases; it does not train a model | `python scripts/rcsl.py train ...` |
 | **Mode Audit** | Bind a real project's clean Git `HEAD` and manage G0, findings, evidence, a local event chain, and a human-review report | `python scripts/rcsl.py audit ...` |
 
-Case maintainers also have separate **release tooling**: `export open-demo` creates a verifiable public bundle for the already-public LLM4SBR case, while `package blind` only assembles three local packages for a new, never-public case in private staging. Release tooling is not a third audit mode and cannot turn a public case into an unseen one.
+`export` / `package` remain maintainer-only release tools, not a third workflow mode; their entry points and boundaries appear below.
 
 > **Recommended training entry:** begin with the [LLM4SBR four-level package](LLM4SBR_research_audit_training_v2/README.md).
 
@@ -66,18 +66,6 @@ Continue Level 2 → 3 → 4 in sequence. At any point, validate the runnable **
 python scripts/rcsl.py train validate
 ```
 
-A case maintainer can export the current Open Demo to a new directory outside the public RCSL repository and optionally run the public checks during export. The target must not exist, and its immediate parent must already exist:
-
-```bash
-python scripts/rcsl.py export open-demo \
-  --output /absolute/path/to/new-open-demo-bundle \
-  --actor "maintainer label" \
-  --run-public-checks
-python scripts/rcsl.py export verify /absolute/path/to/new-open-demo-bundle
-```
-
-The bundle retains a boundary statement, manifest, checksums, validation record, revocation template, and standalone public verifier. The exporter first freezes the public source tree and runs selected checks against that snapshot; the manifest binds its actual content with `source_tree_sha256` while recording the limited Git-revision scope and the worktree's `clean`/`dirty` state. Verification requires an exact root/payload; repository-side verification also byte-compares the trusted verifier and boundary. Successful export or verification establishes only the local release contract and consistency of retained bytes; it does not prove scientific correctness, answer secrecy, or security isolation. See the [case release model](docs/CASE_RELEASE_MODEL_EN.md) for the complete boundary.
-
 To audit your own research project, put the workspace outside the target project and bind it to the current clean Git `HEAD`. The workspace path must not exist, while its immediate parent must already exist:
 
 ```bash
@@ -91,6 +79,8 @@ python scripts/rcsl.py audit status "$WORKSPACE"
 This creates the workspace needed for a G0 contract, structured findings, evidence, and a local event chain through pinned-directory, exclusive writes. G0 starts as `draft`; a human must complete it and record a gate decision before preflight can succeed. `audit report build` likewise pins workspace identity and refuses overwrite, writing reports as `0600` on POSIX. See the full [Mode Audit guide](docs/AUDIT_MODE_EN.md).
 
 Mode Audit **does not execute target-project code, use the network, or modify the target project by default**. `--actor` and `--reviewer` are unauthenticated record labels. The hash chain checks only the internal consistency of retained local records. No `current`, `local-records-consistent`, or `preflight-current` state is a scientific PASS; the finding values `verified` and `closed` are also declared lifecycle states, not independent verification or scientific approval.
+
+Case maintainers need `python scripts/rcsl.py export open-demo --help` or `python scripts/rcsl.py package blind --help` only when releasing a case; read the complete [case release model](docs/CASE_RELEASE_MODEL_EN.md) first. These are maintenance tools, not a third workflow mode.
 
 Every workflow now uses the explicit `train` / `audit` / `export` / `package` namespaces. Legacy top-level commands and the static-view surface that lacked field-validated demand have been pruned from the active product.
 
@@ -141,7 +131,9 @@ Read the [complete competency model](docs/COMPETENCY_MODEL_EN.md) ([中文](docs
 > **A public PASS says only that the public training materials satisfy their package contract. It does not certify a paper's conclusion or replace scientific judgment.**
 > Until you submit your audit, use learner materials only. This public repository provides **honor isolation**, not access control or a secure blind assessment; see the [case release model](docs/CASE_RELEASE_MODEL_EN.md) for true split packaging.
 
-Likewise, successful `export verify` or `package verify` means only that the bundle or staging area satisfies its local manifest, checksum, and separation rules. Both Open Demo and Blind outputs must remain outside the public repository, name a nonexistent target, and have an existing immediate parent. A Blind output must neither contain nor be contained by any of the three source roots. The Blind source manifest and all three sources must also remain outside the public repository; on POSIX, the manifest and its immediate parent must expose no group/other mode bit. Strict JSON refuses every float, versions require strict SemVer, timestamps accept only canonical UTC RFC 3339 `YYYY-MM-DDTHH:MM:SS[.fraction]Z`, and template placeholders fail closed; each role's non-generated payload must exactly equal `source_inventory`. `BUILD_RECORD.json` binds tool-revision scope/worktree state and packager/verifier digests. All three normally assembled roles self-verify from their own roots, while standalone verifiers fail closed on capacity, unreadable directories, and protected paths. Exact-value checking for the private `scoring.digest` exists only during assembly and trusted staging verification; an isolated Challenge standalone does not know that value, cannot prove that an unknown private digest is absent, and Challenge must not carry that digest or a derived commitment. Repository-side trusted-byte verification is coupled to the recorded tool revision, so old packages should be checked with that matching revision. Blind staging also performs bounded leakage and sensitive-path checks and checks current private modes on POSIX; it does not check or provide ACLs. None of these checks proves absence of leakage, provides access control, or turns `assembled-awaiting-controlled-placement` into a released Blind Challenge. Phase 3A local tooling is currently `implemented` and `internally verified`; Phase 3B is not `implemented`, and Phase 3 as a whole is not `field validated`.
+Mode Audit does not use public PASS to score scientific conclusions. `preflight-current`, `local-records-consistent`, and the declared `verified` / `closed` values describe only their scoped local-record and process states.
+
+For maintainers, `export verify` / `package verify` PASS means only that retained bytes satisfy the corresponding local manifest, checksum, and package-separation checks. Outputs must use new locations outside the public repository, and an assembled Blind result remains private `assembled-awaiting-controlled-placement` staging; these checks do not prove scientific correctness, absence of leakage, access control, or formal release. The [case release model](docs/CASE_RELEASE_MODEL_EN.md) is the single source for detailed prerequisites, schemas, threat boundaries, and revision-aware verification. Phase 3A local tooling is `implemented` and `internally verified`, but Phase 3 as a whole is not `field validated`.
 
 ## Deep dive
 

@@ -36,7 +36,7 @@ RCSL 现在有两个显式模式，共用 G0、L1–L4、证据护照与人类�
 | **Mode Train** | 用公开案例训练人类的科研代码判断力；它不是训练模型 | `python scripts/rcsl.py train ...` |
 | **Mode Audit** | 绑定真实项目的 clean Git `HEAD`，管理 G0、finding、evidence、事件链与人工复审报告 | `python scripts/rcsl.py audit ...` |
 
-案例维护者还可以使用独立的**发布工具**：`export open-demo` 为当前已公开的 LLM4SBR 案例生成可验证的公开发布包；`package blind` 只把一个从未公开的新案例组装为三包本地私有 staging。发布工具不是第三种审计模式，也不会把公开案例变成盲题。
+`export` / `package` 仅作为案例维护者的发布工具保留，不是第三种工作模式；入口和边界见下文。
 
 > **训练推荐入口：**从 [LLM4SBR 四级训练包](LLM4SBR_research_audit_training_v2/README.md) 开始。
 
@@ -66,18 +66,6 @@ python scripts/rcsl.py train progress init \
 python scripts/rcsl.py train validate
 ```
 
-案例维护者可把当前 Open Demo 导出到公开 RCSL 仓库外的全新目录，并选择在导出前实际运行公开检查。目标路径必须尚不存在，其直接父目录必须已经存在：
-
-```bash
-python scripts/rcsl.py export open-demo \
-  --output /absolute/path/to/new-open-demo-bundle \
-  --actor "maintainer label" \
-  --run-public-checks
-python scripts/rcsl.py export verify /absolute/path/to/new-open-demo-bundle
-```
-
-该 bundle 保存边界说明、manifest、checksums、验证记录、撤回模板和独立 public verifier。导出器先冻结本次公开源树，并在该快照上运行所选检查；manifest 以 `source_tree_sha256` 绑定实际内容，同时记录 Git revision 的有限范围与 worktree 的 `clean`/`dirty` 状态。校验要求精确 root/payload；仓库侧还逐字节核对受信任 verifier 与 boundary。导出或校验成功只说明本地发布契约与保留字节自洽，不证明科学正确性、答案保密或安全隔离。完整发布边界见 [案例发布模型](docs/CASE_RELEASE_MODEL.md)。
-
 如果你要审计自己的研究项目，请把工作区放在目标项目之外，并绑定它当前的 clean Git `HEAD`。工作区路径必须尚不存在，其直接父目录必须已经存在：
 
 ```bash
@@ -91,6 +79,8 @@ python scripts/rcsl.py audit status "$WORKSPACE"
 它会通过固定目录句柄和独占创建生成 G0 契约模板、结构化 finding、evidence 和本地事件链所需的工作区；G0 初始为 `draft`，必须由人类填写、记录 gate 决定后才能通过 preflight。`audit report build` 同样固定 workspace 身份并拒绝覆盖，在 POSIX 上把报告写为 `0600`。完整命令链见 [Mode Audit 指南](docs/AUDIT_MODE.md)。
 
 Mode Audit 默认**不执行目标项目代码、不联网、不修改目标项目**。`--actor` / `--reviewer` 只是未认证的记录标签；hash chain 只检查仍被保留的本地记录是否自洽。任何 `current`、`local-records-consistent` 或 `preflight-current` 都不是 scientific PASS；finding 的 `verified` / `closed` 也只是声明式生命周期状态，不是独立验证或科学认证。
+
+案例维护者只有在发布案例时才需要 `python scripts/rcsl.py export open-demo --help` 或 `python scripts/rcsl.py package blind --help`；执行前先阅读完整的 [案例发布模型](docs/CASE_RELEASE_MODEL.md)。它们是维护者工具，不是第三种工作模式。
 
 所有工作流都使用明确的 `train` / `audit` / `export` / `package` 命名空间；旧顶层命令和未经过真实需求验证的静态 view 已从活跃产品面剪除。
 
@@ -141,7 +131,9 @@ flowchart LR
 > **公开检查 PASS 只说明公开训练材料满足其包契约；它不等于论文结论为真，也不替代你的科学判断。**
 > 请在提交审计结果之前，只使用学习者材料。当前公开仓库采用的是约定式 **honor isolation**，不是访问控制或安全盲测；真正的盲测分包见 [案例发布模型](docs/CASE_RELEASE_MODEL.md)。
 
-同样，`export verify` 与 `package verify` 的成功只证明对应 bundle/staging 满足本地 manifest、checksum 和分包规则。Open Demo 与 Blind 的输出都必须位于公开仓库外、目标尚不存在且直接父目录已存在；Blind 输出还不能包含任一 source，也不能位于任一 source 内。Blind source manifest 和三个来源也必须位于公开仓库外；在 POSIX 上 manifest 及其直接父目录不能开放 group/other 权限。严格 JSON 拒绝所有浮点值，版本要求严格 SemVer，时间只接受规范 UTC RFC3339 `YYYY-MM-DDTHH:MM:SS[.fraction]Z`，模板占位值 fail closed；每个角色的非生成 payload 必须精确等于 `source_inventory`。`BUILD_RECORD.json` 绑定 tool revision scope/worktree state 与 packager/verifier 摘要；正常组装后的三个角色都能从自身根目录独立自验，standalone 对容量、不可读目录与受保护路径 fail closed。私有 `scoring.digest` 的精确值扫描只存在于组装与受信任 staging 校验中；隔离后的 Challenge standalone 不知道该值，不能证明未知私有摘要未泄露，Challenge 也不得携带该摘要或其派生承诺。仓库侧的受信任字节校验与所记录工具 revision 相绑定，旧包应使用对应 revision 复核。Blind staging 还执行有界泄题与敏感路径检查，并在 POSIX 上检查当前私有 mode；它不检查或提供 ACL。上述检查都不能证明没有信息泄漏，不能提供访问控制，也不能把 `assembled-awaiting-controlled-placement` 解释为已发布的 Blind Challenge。Phase 3A 本地工具当前是 `implemented` + `internally verified`；Phase 3B 尚未 `implemented`，整个 Phase 3 尚未 `field validated`。
+Mode Audit 不使用 public PASS 给科学结论打分；`preflight-current`、`local-records-consistent` 以及声明式 `verified` / `closed` 只说明各自限定的本地记录与流程状态。
+
+维护者侧，`export verify` / `package verify` PASS 只表示保留字节通过对应的本地 manifest、checksum 与分包检查。输出必须位于公开仓库外的全新位置，Blind 组装结果也只是私有的 `assembled-awaiting-controlled-placement` staging；这些检查不证明科学正确、没有泄漏、具备访问控制或已经正式发布。详细前置条件、schema、威胁边界和版本复核要求统一由 [案例发布模型](docs/CASE_RELEASE_MODEL.md)维护。Phase 3A 本地工具是 `implemented` + `internally verified`，但整个 Phase 3 尚未 `field validated`。
 
 ## Deep dive
 
