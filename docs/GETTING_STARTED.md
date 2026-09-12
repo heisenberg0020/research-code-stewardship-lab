@@ -4,9 +4,9 @@
 
 **Research Code Stewardship Lab** 帮你判断一套“能运行”的研究代码、实验和 Agent 流程，是否仍然忠实于论文、实验协议与可追溯证据。它不是代码速写教程；它训练的是在 Coding Agent 时代做出有证据的研究判断。
 
-[English](GETTING_STARTED_EN.md) · [仓库地图](../REPOSITORY_MAP.md) · [能力模型](COMPETENCY_MODEL.md) · [Mode Train](TRAIN_MODE.md) · [Mode Audit](AUDIT_MODE.md) · [案例发布](CASE_RELEASE_MODEL.md) · [双模式路线图](DUAL_MODE_ROADMAP.md)
+[English](GETTING_STARTED_EN.md) · [仓库地图](../REPOSITORY_MAP.md) · [能力模型](COMPETENCY_MODEL.md) · [Mode Train](TRAIN_MODE.md) · [Mode Audit](AUDIT_MODE.md) · [案例发布](CASE_RELEASE_MODEL.md) · [离线视图](VIEW_MODE.md) · [双模式路线图](DUAL_MODE_ROADMAP.md)
 
-命令行明确分为两条工作路径：`rcsl.py train ...` 用于人类能力训练（不是训练模型），`rcsl.py audit ...` 用于真实 Git 项目的证据与决策记录。案例维护者另用 `rcsl.py export ...` / `package ...` 生成发布产物；它们不构成第三种审计模式，也不会自动批准发布。旧顶层命令仅作兼容别名保留。
+命令行明确分为两条工作路径：`rcsl.py train ...` 用于人类能力训练（不是训练模型），`rcsl.py audit ...` 用于真实 Git 项目的证据与决策记录。案例维护者另用 `rcsl.py export ...` / `package ...` 生成发布产物；本地审阅者可用 `rcsl.py view ...` 生成可丢弃的离线只读快照。它们都不构成第三种审计模式，也不会自动批准发布或科学结论。旧顶层命令仅作兼容别名保留。
 
 ## 先选你的目标
 
@@ -17,6 +17,7 @@
 | **Reviewer / Maintainer（审阅者或维护者）** | 运行公开检查，审查训练包的文档、接口与验证入口 | 一份可复现的公开检查结果，以及需要复审的风险清单 |
 | **Research owner（研究负责人）** | 先冻结论文—代码—实验协议，再用 Skill 设计新的训练包 | 一份经人工批准的四级设计规格，而不是未经批准的候选代码 |
 | **Case publisher（案例发布者）** | 先判断案例是已公开 Open Demo，还是从第一天就分离保存的 never-public 候选 | 一个可验证的 Open Demo bundle，或等待受控部署的三包本地 staging |
+| **Local reviewer（本地审阅者）** | 用至少一个已验证 Open Demo 和可选的 Audit/Training workspace 执行 `view build` | 一个无 JavaScript、无外链、无需服务器的离线快照；不是新的 verdict 或可直接发布的网站 |
 
 ---
 
@@ -252,6 +253,28 @@ python scripts/rcsl.py package verify /absolute/path/to/new-private-staging
 
 ---
 
+## 路径 F：我想离线浏览公开案例与本地证据
+
+先准备至少一个已经由当前 checkout 受信任校验器验证的 Open Demo bundle。输出必须是公开仓库外一个尚不存在的新目录，且直接父目录已经存在。Audit/Training workspace 可选：
+
+```bash
+python scripts/rcsl.py view build \
+  --open-demo /absolute/path/to/verified-open-demo \
+  --audit-workspace /absolute/path/to/audit-workspace \
+  --training-workspace /absolute/path/to/training-workspace \
+  --output /absolute/path/to/new-local-view
+
+python scripts/rcsl.py view verify /absolute/path/to/new-local-view
+```
+
+`--open-demo` 可重复使用，至少需要一个、最多支持 32 个。build 会先重新验证 Open Demo，再生成固定 root 的 `index.html`、`style.css`、边界、manifest、checksums、案例 registry 与可选 evidence JSON。直接打开 `index.html` 即可；页面不包含 JavaScript、外链、CDN、服务端或网络回退。
+
+Blind staging 和 Challenge/Evaluator/Maintainer role package 会在读取其 payload 前被拒绝。所有 view 在 POSIX 上均使用 `0700` 目录和 `0600` 文件；包含 Audit 或 Training evidence 的 view 会标记为 `local-sensitive-not-deployable`，mode 不是 ACL 或加密，所以不要部署或直接分享它。页面会保留 `not_assessed`、known limitations 和人工判断边界，不会计算 scientific PASS。
+
+`view verify` 可加入 `--json`。成功只表示静态快照自身满足精确文件、manifest/checksum、静态依赖与本地 mode 契约；它不证明源 workspace 后来没有变化，也不验证科学正确性、保密性或安全托管。详见 [Phase 4A 离线静态视图指南](VIEW_MODE.md)。
+
+---
+
 ## 两条始终有效的边界
 
 ### 1. 答案隔离保护训练价值
@@ -279,3 +302,4 @@ python scripts/rcsl.py package verify /absolute/path/to/new-private-staging
 - 想先建立不看源码的论文理解：看 [Source-Blind Protocol](PAPER_ONLY_REPRODUCTION_PROTOCOL.md)。
 - 想把流程用于自己的论文：看 [Skill 主文件](../skills/research-code-audit-training/SKILL.md)。
 - 想导出 Open Demo 或为新案例准备受控分包：看 [案例发布模型](CASE_RELEASE_MODEL.md)。
+- 想离线浏览已验证 Open Demo 与本地证据：看 [离线静态视图指南](VIEW_MODE.md)。

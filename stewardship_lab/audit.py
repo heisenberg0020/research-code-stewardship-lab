@@ -12,10 +12,12 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from functools import wraps
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import tempfile
 import uuid
@@ -26,6 +28,12 @@ WORKSPACE_METADATA_NAME = "audit-workspace.json"
 FINDINGS_DIRECTORY_NAME = "findings"
 EVENT_LOG_NAME = "audit-events.jsonl"
 ISOLATED_DIRECTORY_NAME = "DO_NOT_OPEN_UNTIL_FINISHED"
+MAX_AUDIT_FILE_BYTES = 16_000_000
+MAX_EVENT_LOG_BYTES = 48_000_000
+MAX_FINDINGS = 10_000
+MAX_EVIDENCE_PER_FINDING = 10_000
+MAX_TOTAL_EVIDENCE = 50_000
+MAX_EVENTS = 100_000
 
 PUBLIC_TEMPLATE_FILENAMES = (
     "research-contract-template.md",
@@ -227,12 +235,75 @@ def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
     _atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
 
-def _read_json_object(path: Path, label: str) -> dict[str, object]:
-    if path.is_symlink() or not path.is_file():
-        raise AuditError(f"missing regular {label}: {path}")
+def _read_regular_bytes(path: Path, label: str, *, maximum_bytes: int) -> bytes:
+    descriptor: int | None = None
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        expected = path.lstat()
+        if not stat.S_ISREG(expected.st_mode) or path.is_symlink():
+            raise AuditError(f"missing regular {label}: {path}")
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0),
+        )
+        before = os.fstat(descriptor)
+        expected_identity = (
+            expected.st_dev,
+            expected.st_ino,
+            expected.st_size,
+            expected.st_mtime_ns,
+            expected.st_mode,
+        )
+        before_identity = (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_mode,
+        )
+        if not stat.S_ISREG(before.st_mode) or before_identity != expected_identity:
+            raise AuditError(f"{label} changed before it could be read safely")
+        if before.st_size > maximum_bytes:
+            raise AuditError(f"{label} exceeds the {maximum_bytes}-byte limit")
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = os.read(descriptor, min(65_536, maximum_bytes + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > maximum_bytes:
+                raise AuditError(f"{label} exceeds the {maximum_bytes}-byte limit")
+        after = os.fstat(descriptor)
+        after_identity = (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_mode,
+        )
+        if after_identity != before_identity:
+            raise AuditError(f"{label} changed while it was being read")
+        return b"".join(chunks)
+    except AuditError:
+        raise
+    except OSError as error:
+        raise AuditError(f"could not read {label}: {error.__class__.__name__}") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _read_json_object(path: Path, label: str) -> dict[str, object]:
+    try:
+        payload = json.loads(
+            _read_regular_bytes(
+                path, label, maximum_bytes=MAX_AUDIT_FILE_BYTES
+            ).decode("utf-8")
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise AuditError(f"could not read {label}: {error.__class__.__name__}") from error
     if not isinstance(payload, dict):
         raise AuditError(f"{label} must contain a JSON object")
@@ -258,12 +329,9 @@ def _metadata_hash(metadata: dict[str, object]) -> str:
 def _file_sha256(path: Path, label: str) -> str:
     """Hash one known public file without following a symlink."""
 
-    if path.is_symlink() or not path.is_file():
-        raise AuditError(f"missing regular {label}: {path}")
-    try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
-    except OSError as error:
-        raise AuditError(f"could not read {label}: {error.__class__.__name__}") from error
+    return hashlib.sha256(
+        _read_regular_bytes(path, label, maximum_bytes=MAX_AUDIT_FILE_BYTES)
+    ).hexdigest()
 
 
 def _validate_event_chain(events: list[dict[str, object]]) -> None:
@@ -313,11 +381,16 @@ def _read_events(workspace: Path, *, allow_missing: bool) -> list[dict[str, obje
             return []
         raise AuditError(f"missing regular event log: {event_path}")
     try:
-        lines = event_path.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError) as error:
+        text = _read_regular_bytes(
+            event_path, "event log", maximum_bytes=MAX_EVENT_LOG_BYTES
+        ).decode("utf-8")
+    except UnicodeDecodeError as error:
         raise AuditError(f"could not read event log: {error.__class__.__name__}") from error
     events: list[dict[str, object]] = []
-    for line_number, line in enumerate(lines, start=1):
+    for line_number, line in enumerate(io.StringIO(text), start=1):
+        if len(events) >= MAX_EVENTS:
+            raise AuditError(f"event log exceeds the {MAX_EVENTS}-event limit")
+        line = line.rstrip("\r\n")
         if not line.strip():
             raise AuditError(f"event log contains an empty line at {line_number}")
         try:
@@ -421,8 +494,12 @@ def _assert_research_contract_complete(workspace: Path) -> None:
     if contract_path.is_symlink() or not contract_path.is_file():
         raise AuditError("G0 approval requires a regular public research contract")
     try:
-        contract = contract_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as error:
+        contract = _read_regular_bytes(
+            contract_path,
+            "public research contract",
+            maximum_bytes=MAX_AUDIT_FILE_BYTES,
+        ).decode("utf-8")
+    except UnicodeDecodeError as error:
         raise AuditError(f"could not read public research contract: {error.__class__.__name__}") from error
     heading_matches = list(MARKDOWN_HEADING_PATTERN.finditer(contract))
     headings = {
@@ -604,14 +681,44 @@ def _load_finding(workspace: Path, finding_id: str) -> dict[str, object]:
 
 def _load_findings(workspace: Path) -> list[dict[str, object]]:
     directory = _validated_findings_directory(workspace)
+    names: list[str] = []
+    try:
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if len(names) >= MAX_FINDINGS:
+                    raise AuditError(
+                        f"findings directory exceeds the {MAX_FINDINGS}-finding limit"
+                    )
+                names.append(entry.name)
+    except AuditError:
+        raise
+    except OSError as error:
+        raise AuditError(
+            f"could not enumerate findings directory: {error.__class__.__name__}"
+        ) from error
     findings: list[dict[str, object]] = []
-    for path in sorted(directory.iterdir(), key=lambda item: item.name):
+    total_evidence = 0
+    for name in sorted(names):
+        path = directory / name
         if path.name == ISOLATED_DIRECTORY_NAME:
             raise AuditError("findings directory contains an isolated-material path")
         if path.is_symlink() or not path.is_file() or path.suffix != ".json":
             raise AuditError(f"findings directory contains an unexpected entry: {path.name}")
         finding_id = path.stem
-        findings.append(_validate_finding(_read_json_object(path, "finding"), expected_id=finding_id))
+        finding = _validate_finding(
+            _read_json_object(path, "finding"), expected_id=finding_id
+        )
+        evidence = finding.get("evidence")
+        if not isinstance(evidence, list) or len(evidence) > MAX_EVIDENCE_PER_FINDING:
+            raise AuditError(
+                f"finding {finding_id} exceeds the {MAX_EVIDENCE_PER_FINDING}-evidence limit"
+            )
+        total_evidence += len(evidence)
+        if total_evidence > MAX_TOTAL_EVIDENCE:
+            raise AuditError(
+                f"findings exceed the {MAX_TOTAL_EVIDENCE}-evidence aggregate limit"
+            )
+        findings.append(finding)
     return findings
 
 
@@ -1221,13 +1328,17 @@ def transition_finding(
     return copy.deepcopy(finding)
 
 
-def verify_audit_workspace(workspace: str | Path) -> dict[str, object]:
-    """Verify public metadata and local hash-chain consistency only.
-
-    This check detects inconsistencies between current finding snapshots and
-    their logged lifecycle hashes. It is not a scientific, legal, or deployment
-    correctness determination.
-    """
+def _verified_audit_snapshot(
+    workspace: str | Path,
+) -> tuple[
+    Path,
+    dict[str, object],
+    dict[str, object],
+    list[dict[str, object]],
+    str,
+    dict[str, object],
+]:
+    """Load once, verify once, and return the exact state used by report projection."""
 
     workspace_path, metadata, lifecycle = _load_bound_workspace(workspace)
     findings = _load_findings(workspace_path)
@@ -1240,7 +1351,11 @@ def verify_audit_workspace(workspace: str | Path) -> dict[str, object]:
     stale_count = sum(
         not _finding_matches_current_baseline(finding, lifecycle) for finding in findings
     )
-    return {
+    contract_sha256 = _file_sha256(
+        workspace_path / "research-contract-template.md",
+        "public research contract",
+    )
+    verification = {
         "ok": True,
         "schema_version": SCHEMA_VERSION,
         "validator_scope": "local_hash_chain_lifecycle_integrity_only",
@@ -1253,14 +1368,71 @@ def verify_audit_workspace(workspace: str | Path) -> dict[str, object]:
         "event_count": len(events),
         "last_event_hash": events[-1]["event_hash"],
     }
+    return (
+        workspace_path,
+        metadata,
+        lifecycle,
+        findings,
+        contract_sha256,
+        verification,
+    )
+
+
+def verify_audit_workspace(workspace: str | Path) -> dict[str, object]:
+    """Verify public metadata and local hash-chain consistency only.
+
+    This check detects inconsistencies between current finding snapshots and
+    their logged lifecycle hashes. It is not a scientific, legal, or deployment
+    correctness determination.
+    """
+
+    return copy.deepcopy(_verified_audit_snapshot(workspace)[-1])
+
+
+def _preflight_from_snapshot(
+    workspace_path: Path,
+    lifecycle: dict[str, object],
+    contract_sha256: str,
+) -> dict[str, object]:
+    gate = lifecycle["g0_gate"]
+    baseline = lifecycle["baseline"]
+    project = lifecycle["project"]
+    if not isinstance(gate, dict) or gate.get("status") != "approved":
+        raise AuditError("G0 gate must be approved before preflight can pass")
+    if not isinstance(baseline, dict) or not isinstance(project, dict):
+        raise AuditError("audit lifecycle baseline is invalid")
+    if contract_sha256 != gate.get("contract_sha256"):
+        raise AuditError(
+            "G0 research contract changed after the recorded decision; record a new gate decision"
+        )
+    current = _git_snapshot(
+        _require_text(project.get("root"), "project root"), require_clean=True
+    )
+    if current["project_root"] != project.get("root"):
+        raise AuditError("bound Git project root has changed")
+    if current["head"] != baseline.get("head"):
+        raise AuditError("project HEAD drift detected; use explicit rebaseline after review")
+    if current["branch"] != baseline.get("branch"):
+        raise AuditError("project branch drift detected; use explicit rebaseline after review")
+    return {
+        "ok": True,
+        "project": copy.deepcopy(current),
+        "baseline": copy.deepcopy(baseline),
+        "g0_gate": copy.deepcopy(gate),
+    }
 
 
 def build_report_data(workspace: str | Path) -> dict[str, object]:
     """Return report-ready data without creating or modifying any file."""
 
-    verification = verify_audit_workspace(workspace)
-    workspace_path, _, lifecycle = _load_bound_workspace(workspace)
-    findings = _load_findings(workspace_path)
+    (
+        workspace_path,
+        _,
+        lifecycle,
+        findings,
+        contract_sha256,
+        verification,
+    ) = _verified_audit_snapshot(workspace)
     report_findings: list[dict[str, object]] = []
     by_status = {status: 0 for status in FINDING_STATUSES}
     by_layer = {layer: 0 for layer in LAYERS}
@@ -1277,7 +1449,9 @@ def build_report_data(workspace: str | Path) -> dict[str, object]:
         report_finding["baseline_state"] = "current" if baseline_current else "stale"
         report_findings.append(report_finding)
     try:
-        preflight_result: dict[str, object] | None = preflight(workspace_path)
+        preflight_result: dict[str, object] | None = _preflight_from_snapshot(
+            workspace_path, lifecycle, contract_sha256
+        )
         preflight_issue: str | None = None
     except AuditError as error:
         preflight_result = None
@@ -1315,12 +1489,6 @@ def build_report_data(workspace: str | Path) -> dict[str, object]:
         },
         "findings": report_findings,
     }
-    final_verification = verify_audit_workspace(workspace_path)
-    if (
-        final_verification.get("last_event_hash") != verification.get("last_event_hash")
-        or final_verification.get("event_count") != verification.get("event_count")
-    ):
-        raise AuditError("audit workspace changed while the report snapshot was being built")
     return report
 
 
