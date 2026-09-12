@@ -13,6 +13,7 @@ import unittest
 from unittest import mock
 
 import stewardship_lab.audit as audit_core
+import stewardship_lab.audit_evidence as evidence_core
 
 from stewardship_lab.audit import (
     PENDING_COMMIT_NAME,
@@ -23,6 +24,7 @@ from stewardship_lab.audit import (
     bind_audit,
     build_report_data,
     inspect_clean_project,
+    import_content_evidence,
     list_findings,
     preflight,
     recover_audit,
@@ -148,6 +150,27 @@ class AuditLifecycleTests(unittest.TestCase):
             actor="Named Reviewer",
         )
 
+    def _convert_current_gate_to_legacy_projection(self) -> None:
+        """Synthesize the v2 reference-only state produced before B-plus."""
+
+        metadata_path = self.workspace / "audit-workspace.json"
+        event_path = self.workspace / "audit-events.jsonl"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        lifecycle = metadata["audit_lifecycle"]
+        lifecycle.pop("content_binding")
+        events = [
+            json.loads(line)
+            for line in event_path.read_text(encoding="utf-8").splitlines()
+        ]
+        projection = events[-1]["payload"]["lifecycle_projection"]
+        projection.pop("content_binding")
+        events[-1]["payload"]["metadata_sha256"] = audit_core._metadata_hash(metadata)
+        metadata_path.write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        self._write_rehashed_events(events)
+
     def _write_rehashed_events(self, events: list[dict[str, object]]) -> None:
         previous_hash: str | None = None
         rebuilt: list[dict[str, object]] = []
@@ -206,6 +229,34 @@ class AuditLifecycleTests(unittest.TestCase):
                 actor="Auditor",
                 rationale=f"Move fixture finding to {status}.",
             )
+
+    def _import_evidence(
+        self,
+        *,
+        finding_id: str = "F-001",
+        evidence_id: str = "E-001",
+        kind: str = "observed",
+        summary: str = "The imported fixture bytes support the lifecycle record.",
+        contents: bytes = b"bounded fixture evidence\n",
+        logical_ref: str | None = None,
+    ) -> dict[str, object]:
+        sources = self.root / "explicit-evidence-sources"
+        sources.mkdir(exist_ok=True)
+        source = sources / f"{evidence_id}.txt"
+        source.write_bytes(contents)
+        return import_content_evidence(
+            self.workspace,
+            finding_id,
+            evidence_id=evidence_id,
+            evidence_type="artifact",
+            kind=kind,
+            source_kind="external",
+            source_path=source,
+            source_ref=logical_ref or f"evidence/{evidence_id}/result.txt",
+            summary=summary,
+            actor="Auditor",
+            artifact_role="result",
+        )
 
     def test_dirty_project_refuses_a_new_bind(self) -> None:
         (self.project / "uncommitted.txt").write_text("dirty\n", encoding="utf-8")
@@ -344,6 +395,152 @@ class AuditLifecycleTests(unittest.TestCase):
         with self.assertRaisesRegex(AuditError, "changed after the recorded decision"):
             preflight(self.workspace)
 
+    def test_approved_g0_uses_stable_lineage_and_retains_rotated_cases(self) -> None:
+        remote = "https://example.invalid/fixture/project.git"
+        self._git(self.project, "remote", "add", "origin", remote)
+        self._approve()
+        metadata_path = self.workspace / "audit-workspace.json"
+        event_path = self.workspace / "audit-events.jsonl"
+        lifecycle = json.loads(metadata_path.read_text(encoding="utf-8"))[
+            "audit_lifecycle"
+        ]
+        first = lifecycle["content_binding"]
+        first_event = json.loads(event_path.read_text(encoding="utf-8").splitlines()[0])
+        expected_subject = "audit/lineage/" + hashlib.sha256(
+            b"rcsl-audit-lineage-v1\0" + first_event["event_hash"].encode("ascii")
+        ).hexdigest()
+        self.assertEqual(first["case_ref"]["subject_id"], expected_subject)
+        project_root = str(self.project.resolve())
+        self.assertNotIn(project_root, expected_subject)
+        self.assertNotIn(remote, expected_subject)
+        for source in (project_root, remote):
+            self.assertNotEqual(
+                expected_subject,
+                "audit/lineage/" + hashlib.sha256(source.encode("utf-8")).hexdigest(),
+            )
+        self.assertNotEqual(
+            expected_subject,
+            "audit/git-project/"
+            + hashlib.sha256(project_root.encode("utf-8")).hexdigest(),
+        )
+        self.assertEqual(
+            first["case_ref"]["case_id"], lifecycle["baseline"]["id"]
+        )
+
+        moved = self.root / "moved-public-audit-workspace"
+        self.workspace.rename(moved)
+        self.workspace = moved
+        metadata_path = self.workspace / "audit-workspace.json"
+        self.assertEqual(
+            verify_audit_workspace(self.workspace)["current_case_ref"],
+            first["case_ref"],
+        )
+
+        set_g0_gate(
+            self.workspace,
+            "blocked",
+            reviewer="Named Reviewer",
+            rationale="A non-approved decision must preserve the prior binding.",
+            actor="Named Reviewer",
+        )
+        blocked = json.loads(metadata_path.read_text(encoding="utf-8"))[
+            "audit_lifecycle"
+        ]
+        self.assertEqual(blocked["content_binding"], first)
+        self.assertEqual(
+            verify_audit_workspace(self.workspace)["content_store"][
+                "referenced_case_manifests"
+            ],
+            1,
+        )
+
+        contract = self.workspace / "research-contract-template.md"
+        contract.write_text(
+            contract.read_text(encoding="utf-8") + "\nA material scope change.\n",
+            encoding="utf-8",
+        )
+        set_g0_gate(
+            self.workspace,
+            "approved",
+            reviewer="Named Reviewer",
+            rationale="Approve the changed exact contract bytes.",
+            actor="Named Reviewer",
+        )
+        rotated = json.loads(metadata_path.read_text(encoding="utf-8"))[
+            "audit_lifecycle"
+        ]["content_binding"]
+        self.assertEqual(
+            rotated["case_ref"]["subject_id"], first["case_ref"]["subject_id"]
+        )
+        self.assertEqual(rotated["case_ref"]["case_id"], first["case_ref"]["case_id"])
+        self.assertNotEqual(
+            rotated["case_ref"]["case_sha256"], first["case_ref"]["case_sha256"]
+        )
+        verification = verify_audit_workspace(self.workspace)
+        self.assertEqual(verification["evidence_profile"], "content-bound-v1")
+        self.assertEqual(verification["content_binding_state"], "current")
+        self.assertEqual(verification["current_case_ref"], rotated["case_ref"])
+        self.assertEqual(
+            verification["content_store"]["referenced_case_manifests"], 2
+        )
+        self.assertEqual(verification["content_store"]["orphan_case_manifests"], 0)
+
+        event_path = self.workspace / "audit-events.jsonl"
+        original_events = event_path.read_bytes()
+        events = [
+            json.loads(line) for line in original_events.decode("utf-8").splitlines()
+        ]
+        current_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        for event in events[:-1]:
+            projection = event["payload"].get("lifecycle_projection")
+            if not isinstance(projection, dict) or "content_binding" not in projection:
+                continue
+            projection["content_binding"] = rotated
+            projected_metadata = json.loads(json.dumps(current_metadata))
+            projected_metadata["audit_lifecycle"] = projection
+            event["payload"]["metadata_sha256"] = audit_core._metadata_hash(
+                projected_metadata
+            )
+        self._write_rehashed_events(events)
+        with self.assertRaisesRegex(AuditError, "projected baseline and G0 gate"):
+            verify_audit_workspace(self.workspace)
+        event_path.write_bytes(original_events)
+
+        prior_manifest = self.workspace.joinpath(
+            *evidence_core.CASE_STORE_PARTS,
+            f"{first['case_ref']['case_sha256']}.json",
+        )
+        executable_manifest = json.loads(prior_manifest.read_text(encoding="utf-8"))
+        executable_manifest["artifacts"][0]["executable"] = True
+        executable_case = evidence_core.case_ref(executable_manifest)
+        executable_binding = {**first, "case_ref": executable_case}
+        executable_path = prior_manifest.with_name(
+            f"{executable_case['case_sha256']}.json"
+        )
+        executable_path.write_bytes(evidence_core.canonical_json_bytes(executable_manifest))
+        executable_path.chmod(0o600)
+        events = [
+            json.loads(line) for line in original_events.decode("utf-8").splitlines()
+        ]
+        for event in events[:-1]:
+            projection = event["payload"].get("lifecycle_projection")
+            if not isinstance(projection, dict) or "content_binding" not in projection:
+                continue
+            projection["content_binding"] = executable_binding
+            projected_metadata = json.loads(json.dumps(current_metadata))
+            projected_metadata["audit_lifecycle"] = projection
+            event["payload"]["metadata_sha256"] = audit_core._metadata_hash(
+                projected_metadata
+            )
+        self._write_rehashed_events(events)
+        with self.assertRaisesRegex(AuditError, "projected baseline and G0 gate"):
+            verify_audit_workspace(self.workspace)
+        event_path.write_bytes(original_events)
+
+        prior_manifest.unlink()
+        with self.assertRaisesRegex(AuditError, "no matching case manifest"):
+            verify_audit_workspace(self.workspace)
+
     def test_legacy_duplicate_gate_fields_require_migration_for_approval_and_preflight(
         self,
     ) -> None:
@@ -412,28 +609,53 @@ class AuditLifecycleTests(unittest.TestCase):
         self.assertEqual(verify_audit_workspace(self.workspace)["stale_finding_count"], 1)
         self._approve()
         with self.assertRaisesRegex(AuditError, "older baseline"):
-            add_evidence(
-                self.workspace,
-                "F-001",
+            self._import_evidence(
+                finding_id="F-001",
                 evidence_id="E-new-epoch",
                 kind="observed",
-                reference="fixture.txt",
                 summary="New-baseline evidence must not be mixed into an old finding.",
-                actor="Auditor",
             )
+
+    def test_rebaseline_preserves_a_stale_binding_until_the_next_approval(self) -> None:
+        finding = self._new_finding()
+        prior_case = finding["case_ref"]
+        baseline = rebaseline(
+            self.workspace,
+            actor="Audit Owner",
+            reason="Begin a new audit epoch without inventing a new case decision.",
+        )
+        metadata = json.loads(
+            (self.workspace / "audit-workspace.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            metadata["audit_lifecycle"]["content_binding"]["case_ref"], prior_case
+        )
+        self.assertNotEqual(baseline["id"], prior_case["case_id"])
+        stale = verify_audit_workspace(self.workspace)
+        self.assertEqual(stale["content_binding_state"], "stale")
+        self.assertEqual(stale["content_store"]["referenced_case_manifests"], 1)
+        stale_report = build_report_data(self.workspace)
+        self.assertEqual(stale_report["findings"][0]["case_state"], "stale")
+        self.assertFalse(stale_report["findings"][0]["case_current"])
+
+        self._approve()
+        current = verify_audit_workspace(self.workspace)
+        self.assertEqual(current["content_binding_state"], "current")
+        self.assertNotEqual(current["current_case_ref"], prior_case)
+        self.assertEqual(current["current_case_ref"]["case_id"], baseline["id"])
+        report = build_report_data(self.workspace)
+        self.assertEqual(report["findings"][0]["case_state"], "stale")
+        self.assertEqual(current["content_store"]["referenced_case_manifests"], 2)
 
     def test_finding_evidence_and_legal_transitions_reach_closed(self) -> None:
         finding = self._new_finding()
         self.assertEqual(finding["status"], "open")
         self.assertEqual(list_findings(self.workspace)[0]["id"], "F-001")
-        add_evidence(
-            self.workspace,
-            "F-001",
+        self._import_evidence(
+            finding_id="F-001",
             evidence_id="E-001",
             kind="observed",
-            reference="tests/fixture-output.txt",
             summary="The fixture evidence supports the recorded lifecycle claim.",
-            actor="Auditor",
         )
         self._advance_to_mitigated()
         self._approve()
@@ -455,6 +677,244 @@ class AuditLifecycleTests(unittest.TestCase):
         self.assertEqual(closed["status"], "closed")
         self.assertTrue(verify_audit_workspace(self.workspace)["ok"])
 
+    def test_content_import_binds_the_record_event_and_global_evidence_id(self) -> None:
+        finding = self._new_finding()
+        imported = self._import_evidence()
+        record = imported["evidence"][0]
+        self.assertEqual(record["case_ref"], finding["case_ref"])
+        self.assertEqual(record["artifact_ref"]["path"], record["source"]["ref"])
+        events = [
+            json.loads(line)
+            for line in (self.workspace / "audit-events.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        self.assertEqual(
+            events[-1]["payload"]["evidence_ref"],
+            evidence_core.content_evidence_record_ref(record),
+        )
+        verification = verify_audit_workspace(self.workspace)
+        self.assertEqual(verification["content_finding_count"], 1)
+        self.assertEqual(verification["content_evidence_count"], 1)
+
+        self._new_finding("F-002")
+        with self.assertRaisesRegex(AuditError, "content evidence id already exists"):
+            self._import_evidence(finding_id="F-002", evidence_id="E-001")
+
+    def test_content_record_ref_and_required_cas_objects_fail_closed(self) -> None:
+        self._new_finding()
+        imported = self._import_evidence()
+        record = imported["evidence"][0]
+        event_path = self.workspace / "audit-events.jsonl"
+        original_events = event_path.read_bytes()
+        events = [
+            json.loads(line) for line in original_events.decode("utf-8").splitlines()
+        ]
+        events[-1]["payload"]["kind"] = "asserted"
+        self._write_rehashed_events(events)
+        with self.assertRaisesRegex(AuditError, "kind does not match"):
+            verify_audit_workspace(self.workspace)
+
+        event_path.write_bytes(original_events)
+        events = [
+            json.loads(line) for line in original_events.decode("utf-8").splitlines()
+        ]
+        events[-1]["payload"]["evidence_ref"]["record_sha256"] = "0" * 64
+        self._write_rehashed_events(events)
+        with self.assertRaisesRegex(AuditError, "does not bind the inline record"):
+            verify_audit_workspace(self.workspace)
+        event_path.write_bytes(original_events)
+
+        case = imported["case_ref"]
+        manifest_path = self.workspace.joinpath(
+            *evidence_core.CASE_STORE_PARTS, f"{case['case_sha256']}.json"
+        )
+        manifest_bytes = manifest_path.read_bytes()
+        manifest_path.unlink()
+        with self.assertRaisesRegex(AuditError, "no matching case manifest"):
+            verify_audit_workspace(self.workspace)
+        manifest_path.write_bytes(manifest_bytes)
+        manifest_path.chmod(0o600)
+
+        artifact = record["artifact_ref"]
+        blob_path = self.workspace.joinpath(
+            *evidence_core.BLOB_STORE_PARTS, artifact["sha256"]
+        )
+        blob_path.write_bytes(b"tampered evidence bytes")
+        with self.assertRaisesRegex(AuditError, "content address"):
+            verify_audit_workspace(self.workspace)
+
+    def test_replay_enforces_event_time_case_and_prior_content_evidence(self) -> None:
+        self._new_finding()
+        self._import_evidence()
+        contract = self.workspace / "research-contract-template.md"
+        contract.write_text(
+            contract.read_text(encoding="utf-8") + "\nA rotated event-time scope.\n",
+            encoding="utf-8",
+        )
+        set_g0_gate(
+            self.workspace,
+            "approved",
+            reviewer="Named Reviewer",
+            rationale="Rotate the active case before the adversarial event move.",
+            actor="Named Reviewer",
+        )
+        event_path = self.workspace / "audit-events.jsonl"
+        original_events = event_path.read_bytes()
+        events = [
+            json.loads(line) for line in original_events.decode("utf-8").splitlines()
+        ]
+        evidence_index = next(
+            index
+            for index, event in enumerate(events)
+            if event["event_type"] == "finding_evidence_added"
+        )
+        events.append(events.pop(evidence_index))
+        self._write_rehashed_events(events)
+        with self.assertRaisesRegex(AuditError, "event-time approved audit case"):
+            verify_audit_workspace(self.workspace)
+        event_path.write_bytes(original_events)
+
+        add_finding(
+            self.workspace,
+            finding_id="F-zero-evidence",
+            title="Zero-evidence terminal replay fixture",
+            layer="L1",
+            competency="C1",
+            severity="low",
+            claim="A terminal label cannot manufacture prior content evidence.",
+            first_broken_contract="The content evidence gate is still empty.",
+            actor="Auditor",
+        )
+        self._advance_to_mitigated("F-zero-evidence")
+        finding_path = self.workspace / "findings" / "F-zero-evidence.json"
+        finding = json.loads(finding_path.read_text(encoding="utf-8"))
+        finding["status"] = "verified"
+        finding["actor"] = "Fabricated Reviewer"
+        finding["updated_at"] = "2026-09-13T01:02:03Z"
+        finding_path.write_text(json.dumps(finding, indent=2) + "\n", encoding="utf-8")
+        events = [
+            json.loads(line) for line in event_path.read_text(encoding="utf-8").splitlines()
+        ]
+        events.append(
+            {
+                "schema_version": 2,
+                "timestamp": "2026-09-13T01:02:03Z",
+                "event_type": "finding_status_changed",
+                "actor": "Fabricated Reviewer",
+                "payload": {
+                    "finding_id": "F-zero-evidence",
+                    "from_status": "mitigated",
+                    "to_status": "verified",
+                    "rationale": "This rehashed label has no qualifying content record.",
+                    "finding_sha256": audit_core._finding_hash(finding),
+                },
+            }
+        )
+        self._write_rehashed_events(events)
+        with self.assertRaisesRegex(AuditError, "prior qualifying content evidence"):
+            verify_audit_workspace(self.workspace)
+
+    def test_terminal_state_requires_a_qualifying_content_record(self) -> None:
+        self._new_finding()
+        add_evidence(
+            self.workspace,
+            "F-001",
+            evidence_id="E-reference",
+            kind="reproduced",
+            reference="historical/result.txt",
+            summary="Even a reproduced label is still only a reference record.",
+            actor="Auditor",
+        )
+        self._import_evidence(evidence_id="E-asserted", kind="asserted")
+        verification = verify_audit_workspace(self.workspace)
+        report = build_report_data(self.workspace)
+        self.assertEqual(verification["content_evidence_count"], 1)
+        self.assertEqual(len(report["findings"][0]["evidence"]), 2)
+        self.assertIn("historical/result.txt", render_report_markdown(self.workspace))
+        self._advance_to_mitigated()
+        with self.assertRaisesRegex(AuditError, "observed, derived, or reproduced"):
+            transition_finding(
+                self.workspace,
+                "F-001",
+                "verified",
+                actor="Named Reviewer",
+                rationale="An assertion alone must not pass the terminal gate.",
+            )
+        self._import_evidence(evidence_id="E-observed", kind="observed")
+        self.assertEqual(
+            transition_finding(
+                self.workspace,
+                "F-001",
+                "verified",
+                actor="Named Reviewer",
+                rationale="The current case now has a qualifying byte-bound record.",
+            )["status"],
+            "verified",
+        )
+
+    def test_reference_evidence_accepts_legacy_finding_but_rejects_stale_case(self) -> None:
+        self._approve()
+        self._convert_current_gate_to_legacy_projection()
+        legacy = add_finding(
+            self.workspace,
+            finding_id="F-legacy-current",
+            title="Current legacy finding",
+            layer="L1",
+            competency="C1",
+            severity="low",
+            claim="This finding predates content binding at the same baseline.",
+            first_broken_contract="A reference-only historical record.",
+            actor="Auditor",
+        )
+        self.assertNotIn("case_ref", legacy)
+        self._approve()
+        updated = add_evidence(
+            self.workspace,
+            "F-legacy-current",
+            evidence_id="E-legacy-current",
+            kind="observed",
+            reference="historical/result.txt",
+            summary="A current-baseline legacy finding remains appendable.",
+            actor="Auditor",
+        )
+        self.assertEqual(updated["evidence"][0]["id"], "E-legacy-current")
+
+        bound = add_finding(
+            self.workspace,
+            finding_id="F-bound-old-case",
+            title="Content-bound finding before case rotation",
+            layer="L1",
+            competency="C1",
+            severity="low",
+            claim="This finding remains tied to its exact contract case.",
+            first_broken_contract="The exact case must not be blurred.",
+            actor="Auditor",
+        )
+        self.assertIn("case_ref", bound)
+        contract = self.workspace / "research-contract-template.md"
+        contract.write_text(
+            contract.read_text(encoding="utf-8") + "\nA rotated audit scope.\n",
+            encoding="utf-8",
+        )
+        set_g0_gate(
+            self.workspace,
+            "approved",
+            reviewer="Named Reviewer",
+            rationale="Approve the rotated exact contract case.",
+            actor="Named Reviewer",
+        )
+        with self.assertRaisesRegex(AuditError, "older audit case"):
+            add_evidence(
+                self.workspace,
+                "F-bound-old-case",
+                evidence_id="E-stale-case",
+                kind="observed",
+                reference="stale/result.txt",
+                summary="A stale content case must not receive later reference evidence.",
+                actor="Auditor",
+            )
+
     def test_evidence_gated_transition_requires_evidence_and_clean_approved_preflight(
         self,
     ) -> None:
@@ -470,14 +930,11 @@ class AuditLifecycleTests(unittest.TestCase):
                 rationale="This is intentionally missing evidence.",
             )
 
-        add_evidence(
-            self.workspace,
-            "F-001",
+        self._import_evidence(
+            finding_id="F-001",
             evidence_id="E-001",
             kind="observed",
-            reference="tests/fixture-output.txt",
             summary="Record the evidence before attempting an evidence-gated declared state.",
-            actor="Auditor",
         )
         set_g0_gate(
             self.workspace,
@@ -660,20 +1117,58 @@ class AuditLifecycleTests(unittest.TestCase):
 
         with mock.patch.object(audit_core, "_atomic_write_text", side_effect=fail_event):
             with self.assertRaisesRegex(AuditError, "audit recover"):
-                add_evidence(
-                    self.workspace,
-                    "F-001",
+                self._import_evidence(
+                    finding_id="F-001",
                     evidence_id="E-recover",
                     kind="observed",
-                    reference="fixture.txt",
                     summary="This evidence snapshot was written before the event failed.",
-                    actor="Auditor",
                 )
 
+        pending = json.loads(
+            (self.workspace / PENDING_COMMIT_NAME).read_text(encoding="utf-8")
+        )
+        record = pending["snapshot_after"]["evidence"][0]
+        blob = self.workspace.joinpath(
+            *evidence_core.BLOB_STORE_PARTS, record["artifact_ref"]["sha256"]
+        )
+        original_blob = blob.read_bytes()
+        blob.write_bytes(b"tampered while recovery is pending")
+        with self.assertRaisesRegex(AuditError, "content address"):
+            recover_audit(self.workspace)
+        self.assertTrue((self.workspace / PENDING_COMMIT_NAME).is_file())
+        blob.write_bytes(original_blob)
         recovered = recover_audit(self.workspace)
         finding = list_findings(self.workspace)[0]
         self.assertEqual(recovered["verification"]["event_count"], event_count + 1)
         self.assertEqual([item["id"] for item in finding["evidence"]], ["E-recover"])
+        self.assertEqual(
+            recover_audit(self.workspace)["verification"]["event_count"],
+            event_count + 1,
+        )
+
+    def test_content_blob_published_before_pending_failure_is_a_valid_orphan(self) -> None:
+        self._new_finding()
+        finding_path = self.workspace / "findings" / "F-001.json"
+        event_path = self.workspace / "audit-events.jsonl"
+        before = {path: path.read_bytes() for path in (finding_path, event_path)}
+        with mock.patch.object(
+            audit_core,
+            "_write_pending_commit",
+            side_effect=AuditError("simulated pending intent failure"),
+        ):
+            with self.assertRaisesRegex(AuditError, "simulated pending intent failure"):
+                self._import_evidence(
+                    evidence_id="E-orphan",
+                    contents=b"valid content that never reached the lifecycle ledger\n",
+                )
+
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
+        self.assertFalse((self.workspace / PENDING_COMMIT_NAME).exists())
+        verification = verify_audit_workspace(self.workspace)
+        self.assertEqual(verification["content_evidence_count"], 0)
+        self.assertEqual(
+            verification["content_store"]["orphan_evidence_blobs"], 1
+        )
 
     def test_cleanup_failure_recovers_without_duplicating_the_committed_event(self) -> None:
         event_count = len(
@@ -713,14 +1208,11 @@ class AuditLifecycleTests(unittest.TestCase):
 
         with mock.patch.object(audit_core, "MAX_AUDIT_FILE_BYTES", current_limit):
             with self.assertRaisesRegex(AuditError, "byte limit"):
-                add_evidence(
-                    self.workspace,
-                    "F-001",
+                self._import_evidence(
+                    finding_id="F-001",
                     evidence_id="E-oversize",
                     kind="observed",
-                    reference="fixture.txt",
                     summary="x" * (current_limit * 2),
-                    actor="Auditor",
                 )
 
         event_bytes = len(event_path.read_bytes())
@@ -747,25 +1239,19 @@ class AuditLifecycleTests(unittest.TestCase):
 
         with mock.patch.object(audit_core, "MAX_EVIDENCE_PER_FINDING", 0):
             with self.assertRaisesRegex(AuditError, "evidence limit"):
-                add_evidence(
-                    self.workspace,
-                    "F-001",
+                self._import_evidence(
+                    finding_id="F-001",
                     evidence_id="E-capacity",
                     kind="observed",
-                    reference="fixture.txt",
                     summary="No evidence capacity remains.",
-                    actor="Auditor",
                 )
         with mock.patch.object(audit_core, "MAX_TOTAL_EVIDENCE", 0):
             with self.assertRaisesRegex(AuditError, "aggregate limit"):
-                add_evidence(
-                    self.workspace,
-                    "F-001",
+                self._import_evidence(
+                    finding_id="F-001",
                     evidence_id="E-total-capacity",
                     kind="observed",
-                    reference="fixture.txt",
                     summary="No aggregate evidence capacity remains.",
-                    actor="Auditor",
                 )
         with mock.patch.object(audit_core, "MAX_FINDINGS", 1):
             with self.assertRaisesRegex(AuditError, "finding limit"):
@@ -959,6 +1445,57 @@ class AuditLifecycleTests(unittest.TestCase):
         with self.assertRaisesRegex(AuditError, "projection does not match"):
             verify_audit_workspace(self.workspace)
 
+    def test_rehashed_projection_rejects_foreign_subject_and_binding_removal(self) -> None:
+        self._approve()
+        metadata_path = self.workspace / "audit-workspace.json"
+        event_path = self.workspace / "audit-events.jsonl"
+        original_metadata = metadata_path.read_bytes()
+        original_events = event_path.read_bytes()
+        metadata = json.loads(original_metadata)
+        events = [
+            json.loads(line) for line in original_events.decode("utf-8").splitlines()
+        ]
+        foreign_subject = "audit/git-project/" + "0" * 64
+        metadata["audit_lifecycle"]["content_binding"]["case_ref"][
+            "subject_id"
+        ] = foreign_subject
+        events[-1]["payload"]["lifecycle_projection"]["content_binding"][
+            "case_ref"
+        ]["subject_id"] = foreign_subject
+        events[-1]["payload"]["metadata_sha256"] = audit_core._metadata_hash(metadata)
+        metadata_path.write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        self._write_rehashed_events(events)
+        with self.assertRaisesRegex(AuditError, "audit lineage"):
+            verify_audit_workspace(self.workspace)
+        metadata_path.write_bytes(original_metadata)
+        event_path.write_bytes(original_events)
+
+        set_g0_gate(
+            self.workspace,
+            "blocked",
+            reviewer="Named Reviewer",
+            rationale="Create a later projection whose binding must remain sticky.",
+            actor="Named Reviewer",
+        )
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        events = [
+            json.loads(line) for line in event_path.read_text(encoding="utf-8").splitlines()
+        ]
+        metadata["audit_lifecycle"].pop("content_binding")
+        events[-1]["payload"]["lifecycle_projection"].pop("content_binding")
+        events[-1]["payload"]["metadata_sha256"] = audit_core._metadata_hash(metadata)
+        metadata_path.write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        self._write_rehashed_events(events)
+
+        with self.assertRaisesRegex(AuditError, "must not disappear"):
+            verify_audit_workspace(self.workspace)
+
     def test_rehashed_projection_downgrade_is_rejected(self) -> None:
         event_path = self.workspace / "audit-events.jsonl"
         events = [
@@ -1044,6 +1581,77 @@ class AuditLifecycleTests(unittest.TestCase):
             migrated_metadata["audit_lifecycle"],
         )
         self.assertTrue(verify_audit_workspace(self.workspace)["ok"])
+
+    def test_legacy_reference_terminal_history_remains_readable(self) -> None:
+        self._approve()
+        self._convert_current_gate_to_legacy_projection()
+        orphan_blob = next(
+            self.workspace.joinpath(*evidence_core.BLOB_STORE_PARTS).iterdir()
+        )
+        orphan_blob.write_bytes(b"tampered preparation orphan")
+        self.assertEqual(
+            verify_audit_workspace(self.workspace)["evidence_profile"],
+            "reference-only",
+        )
+        add_finding(
+            self.workspace,
+            finding_id="F-legacy",
+            title="Legacy terminal fixture",
+            layer="L1",
+            competency="C1",
+            severity="low",
+            claim="A historical terminal record remains readable.",
+            first_broken_contract="Historical reference-only evidence.",
+            actor="Auditor",
+        )
+        add_evidence(
+            self.workspace,
+            "F-legacy",
+            evidence_id="E-legacy",
+            kind="observed",
+            reference="historical/result.txt",
+            summary="This is a pre-content-binding reference record.",
+            actor="Auditor",
+        )
+        self._advance_to_mitigated("F-legacy")
+        with self.assertRaisesRegex(AuditError, "content-bound audit case"):
+            transition_finding(
+                self.workspace,
+                "F-legacy",
+                "verified",
+                actor="Named Reviewer",
+                rationale="New terminal transitions require the current profile.",
+            )
+
+        finding_path = self.workspace / "findings" / "F-legacy.json"
+        finding = json.loads(finding_path.read_text(encoding="utf-8"))
+        finding["status"] = "verified"
+        finding["actor"] = "Historical Reviewer"
+        finding["updated_at"] = "2026-09-13T01:02:03Z"
+        finding_path.write_text(json.dumps(finding, indent=2) + "\n", encoding="utf-8")
+        event_path = self.workspace / "audit-events.jsonl"
+        events = [
+            json.loads(line) for line in event_path.read_text(encoding="utf-8").splitlines()
+        ]
+        events.append(
+            {
+                "schema_version": 2,
+                "timestamp": "2026-09-13T01:02:03Z",
+                "event_type": "finding_status_changed",
+                "actor": "Historical Reviewer",
+                "payload": {
+                    "finding_id": "F-legacy",
+                    "from_status": "mitigated",
+                    "to_status": "verified",
+                    "rationale": "Recorded before the content-bound terminal rule.",
+                    "finding_sha256": audit_core._finding_hash(finding),
+                },
+            }
+        )
+        self._write_rehashed_events(events)
+        verification = verify_audit_workspace(self.workspace)
+        self.assertTrue(verification["ok"])
+        self.assertEqual(list_findings(self.workspace)[0]["status"], "verified")
 
     def test_schema_versions_and_event_sequences_require_exact_integers(self) -> None:
         self._new_finding()
@@ -1349,14 +1957,12 @@ class AuditLifecycleTests(unittest.TestCase):
             first_broken_contract="A literal *contract* marker.",
             actor="Auditor",
         )
-        add_evidence(
-            self.workspace,
-            "F-escape",
+        self._import_evidence(
+            finding_id="F-escape",
             evidence_id="E-escape",
             kind="observed",
-            reference="artifact`)\n## Forged evidence",
-            summary="Observed [link](https://example.invalid).",
-            actor="Auditor",
+            logical_ref="evidence/E-escape/artifact`).txt",
+            summary="Observed [link](https://example.invalid).\n## Forged evidence",
         )
 
         markdown = render_report_markdown(self.workspace)
