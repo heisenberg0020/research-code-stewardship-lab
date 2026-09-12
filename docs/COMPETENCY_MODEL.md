@@ -6,13 +6,16 @@
 
 ## 先把模型用于自己的项目
 
-在仓库根目录创建一个不会改动目标项目的本地证据工作区：
+准备一个 clean Git 目标项目，并在目标项目和本仓库之外创建本地证据工作区：
 
 ```bash
-python scripts/rcsl.py init-audit --level 1 --output my-audit
+python scripts/rcsl.py audit init \
+  --project /absolute/path/to/clean-git-project \
+  --output /absolute/path/outside-project/my-audit \
+  --level 1 --actor "declared owner label"
 ```
 
-然后依次填写 [G0 研究契约](../skills/research-code-audit-training/assets/research-contract-template.md)、[快速分诊卡](../skills/research-code-audit-training/assets/triage-card-template.md)、[Human–Agent 委派合同](../skills/research-code-audit-training/assets/delegation-contract-template.md)和[证据护照](../skills/research-code-audit-training/assets/evidence-passport-template.md)。运行 `python scripts/rcsl.py status-audit my-audit` 查看结构进度，运行 `python scripts/rcsl.py lint-audit my-audit` 检查遗漏的占位项。两者都不判断内容是否科学正确。
+然后依次填写 [G0 研究契约](../skills/research-code-audit-training/assets/research-contract-template.md)、[快速分诊卡](../skills/research-code-audit-training/assets/triage-card-template.md)、[Human–Agent 委派合同](../skills/research-code-audit-training/assets/delegation-contract-template.md)和[证据护照](../skills/research-code-audit-training/assets/evidence-passport-template.md)。用 `python scripts/rcsl.py audit status /absolute/path/outside-project/my-audit` 查看生命周期状态，用 `python scripts/rcsl.py audit lint /absolute/path/outside-project/my-audit` 检查模板结构。两者都不判断内容是否科学正确。完整闭环见 [Mode Audit 指南](AUDIT_MODE.md)。
 
 ## G0：研究契约门（先于任何 Level）
 

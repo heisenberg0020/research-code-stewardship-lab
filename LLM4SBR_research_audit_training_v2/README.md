@@ -4,7 +4,7 @@
 
 > **One research case. Four layers of evidence.** Learn to distinguish code that runs from research that is defensible.
 
-[中文入门](../docs/GETTING_STARTED.md) · [English start guide](../docs/GETTING_STARTED_EN.md) · [Case File](CASE_FILE.md) · [Competency model](../docs/COMPETENCY_MODEL_EN.md) · [Repository map](../REPOSITORY_MAP.md) · [Paper](https://arxiv.org/abs/2402.13840) · [Original implementation](https://github.com/tsinghua-fib-lab/LLM4SBR)
+[中文入门](../docs/GETTING_STARTED.md) · [English start guide](../docs/GETTING_STARTED_EN.md) · [Mode Train guide](../docs/TRAIN_MODE_EN.md) · [Case File](CASE_FILE.md) · [Competency model](../docs/COMPETENCY_MODEL_EN.md) · [Repository map](../REPOSITORY_MAP.md) · [Paper](https://arxiv.org/abs/2402.13840) · [Original implementation](https://github.com/tsinghua-fib-lab/LLM4SBR)
 
 ## What this course trains
 
@@ -36,7 +36,17 @@ LEVEL 3: PASS
 LEVEL 4: PASS
 ```
 
-Then read [PROGRESSION.md](PROGRESSION.md) and begin with [Level 1](level_1_algorithm_semantics/README.md). Work through the levels in numerical order.
+Then read [PROGRESSION.md](PROGRESSION.md) and begin with [Level 1](level_1_algorithm_semantics/README.md). Work through the levels in numerical order and finish with the public synthetic [cross-layer capstone](CAPSTONE_BRIEF.md).
+
+To retain attempts, feedback, and retries locally, create a learner workspace outside this repository:
+
+```bash
+python scripts/rcsl.py train progress init \
+  --output /absolute/path/to/my-rcsl-progress \
+  --learner "your declared label"
+```
+
+The workspace contains editable L1–L4 and capstone worksheets, a maturity rubric, the capstone brief, and one resumable `progress.json`. See the [Mode Train guide](../docs/TRAIN_MODE_EN.md) for checking, submitting, human review, and redacted export.
 
 ## The four audit layers
 
@@ -48,6 +58,16 @@ Then read [PROGRESSION.md](PROGRESSION.md) and begin with [Level 1](level_1_algo
 | **4 — Agent experiment governance** | Were approvals, budgets, records, and protected evidence handled within protocol? | [Level 4 brief](level_4_agent_experiment_governance/README.md) | `python LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/validate_ledger_schema.py` |
 
 Each level has a learner-visible `ANSWER_SHEET.md` for recording the evidence chain. Complete it before consulting material marked for instructors or post-completion release.
+
+## Progress and capstone
+
+The optional `train progress` workflow turns each completed worksheet into a frozen attempt with a digest and preserves later retries. It keeps three meanings separate:
+
+- **worksheet structure:** whether required sections are present, nonempty, and free of unresolved prompts;
+- **human review:** a named person's `pass`, `revise`, or `blocked` decision with Recognize / Prove / Direct / Steward observations and explicit evidence gaps;
+- **scientific correctness:** always `not_assessed` by the public CLI.
+
+Multiple reviewer records remain separate; disagreement is not averaged into a score. The capstone integrates triage, blast radius, evidence preservation, Human–Agent delegation, claim boundaries, remediation, and stakeholder communication. It passes only through an explicit named human review. Reviewer and learner names are declared labels, not authenticated identities.
 
 ## How to use the package
 
@@ -90,6 +110,8 @@ Before looking at code, you can create a source-blind paper baseline with the [P
 
 - [Framework overview](FRAMEWORK_OVERVIEW.md): why research-code stewardship matters and the complete training framework.
 - [Progression](PROGRESSION.md): the required order and evidence standard for Levels 1–4.
+- [Cross-layer capstone](CAPSTONE_BRIEF.md): the public synthetic incident completed after Levels 1–4.
+- [Mode Train guide](../docs/TRAIN_MODE_EN.md): external progress workspace, immutable attempts, human review, retries, and redacted export.
 - [Case File](CASE_FILE_EN.md): scope, provenance, G0 boundary, validation claims, and review triggers for this release.
 - [Competency model](../docs/COMPETENCY_MODEL_EN.md): G0, seven cross-level capabilities, maturity bands, and capstone.
 - [Repository start guide](../docs/GETTING_STARTED.md): choose a learner, reviewer, or research-owner path.

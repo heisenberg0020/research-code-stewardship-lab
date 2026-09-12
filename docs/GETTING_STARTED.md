@@ -4,7 +4,7 @@
 
 **Research Code Stewardship Lab** 帮你判断一套“能运行”的研究代码、实验和 Agent 流程，是否仍然忠实于论文、实验协议与可追溯证据。它不是代码速写教程；它训练的是在 Coding Agent 时代做出有证据的研究判断。
 
-[English](GETTING_STARTED_EN.md) · [仓库地图](../REPOSITORY_MAP.md) · [能力模型](COMPETENCY_MODEL.md) · [Mode Audit](AUDIT_MODE.md) · [双模式路线图](DUAL_MODE_ROADMAP.md)
+[English](GETTING_STARTED_EN.md) · [仓库地图](../REPOSITORY_MAP.md) · [能力模型](COMPETENCY_MODEL.md) · [Mode Train](TRAIN_MODE.md) · [Mode Audit](AUDIT_MODE.md) · [双模式路线图](DUAL_MODE_ROADMAP.md)
 
 命令行明确分为两条路径：`rcsl.py train ...` 用于人类能力训练（不是训练模型），`rcsl.py audit ...` 用于真实 Git 项目的证据与决策记录。旧顶层命令仅作兼容别名保留。
 
@@ -12,7 +12,7 @@
 
 | 你是谁 | 先做什么 | 你会得到什么 |
 | --- | --- | --- |
-| **Learner（学习者）** | `python scripts/rcsl.py train start --level 1` | 一份包含定位、违反的 contract、反例、因果影响和安全修复的证据链 |
+| **Learner（学习者）** | 读 [Mode Train 指南](TRAIN_MODE.md)，再用 `python scripts/rcsl.py train progress init ...` 建立外部工作区 | 可暂停恢复的 Evidence Passport、不可变尝试、人工反馈与跨层 Capstone |
 | **Project owner / Auditor（项目负责人或审计员）** | 读 [Mode Audit 指南](AUDIT_MODE.md)，再用 `python scripts/rcsl.py audit init ...` 绑定 clean Git `HEAD` | G0、结构化 finding/evidence、本地事件链和人工复审报告 |
 | **Reviewer / Maintainer（审阅者或维护者）** | 运行公开检查，审查训练包的文档、接口与验证入口 | 一份可复现的公开检查结果，以及需要复审的风险清单 |
 | **Research owner（研究负责人）** | 先冻结论文—代码—实验协议，再用 Skill 设计新的训练包 | 一份经人工批准的四级设计规格，而不是未经批准的候选代码 |
@@ -34,6 +34,16 @@ python scripts/rcsl.py train validate
 
 预期结果是连续出现 `LEVEL 1: PASS` 到 `LEVEL 4: PASS`。这说明你拿到的是一个可运行、公开结构完整的训练包；它**不**替你判断哪个候选忠实于论文，也不代表实验结论已成立。
 
+若要保存学习进度，在仓库外建立自己的本地工作区：
+
+```bash
+python scripts/rcsl.py train progress init \
+  --output /absolute/path/to/my-rcsl-progress \
+  --learner "your declared label"
+```
+
+之后编辑 `worksheets/L1.md`，用 `train progress check` 检查结构、`submit` 冻结尝试、`review` 记录具名人工复核，并在 L1–L4 后完成 `capstone`。完整命令见 [Mode Train 指南](TRAIN_MODE.md)。
+
 ### 2. 按层级学习，不要跳关
 
 从 [课程主页](../LLM4SBR_research_audit_training_v2/README.md) 和 [Progression](../LLM4SBR_research_audit_training_v2/PROGRESSION.md) 开始，然后依次进入每一关：
@@ -44,6 +54,8 @@ python scripts/rcsl.py train validate
 | 2 | 数据身份、切分、指标和 checkpoint 的链路完整吗？ | [`level_2_pipeline_integrity/README.md`](../LLM4SBR_research_audit_training_v2/level_2_pipeline_integrity/README.md) | `python LLM4SBR_research_audit_training_v2/level_2_pipeline_integrity/run_smoke.py` |
 | 3 | 比较是否公平，证据是否支持科学主张？ | [`level_3_scientific_validity/README.md`](../LLM4SBR_research_audit_training_v2/level_3_scientific_validity/README.md) | `python LLM4SBR_research_audit_training_v2/level_3_scientific_validity/validate_evidence_schema.py` |
 | 4 | Agent 的审批、预算、记录和受保护证据是否合规？ | [`level_4_agent_experiment_governance/README.md`](../LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/README.md) | `python LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/validate_ledger_schema.py` |
+
+四级之后的 [跨层 Capstone](../LLM4SBR_research_audit_training_v2/CAPSTONE_BRIEF.md) 不是 L5。它把 G0、分诊、委派、影响面、claim 边界和沟通合并为一次事故响应，并且只能由具名人工复核通过。
 
 ### 3. 提交的是证据链，不是一个字母
 

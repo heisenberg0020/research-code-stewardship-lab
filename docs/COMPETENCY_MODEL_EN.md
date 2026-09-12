@@ -6,13 +6,16 @@ This model gives RCSL two complementary dimensions: the **vertical axis classifi
 
 ## Apply the model to your own project
 
-From the repository root, create a local evidence workspace that does not modify the target project:
+Prepare a clean Git target project, then create a local evidence workspace outside both the target and this repository:
 
 ```bash
-python scripts/rcsl.py init-audit --level 1 --output my-audit
+python scripts/rcsl.py audit init \
+  --project /absolute/path/to/clean-git-project \
+  --output /absolute/path/outside-project/my-audit \
+  --level 1 --actor "declared owner label"
 ```
 
-Then complete the [G0 research contract](../skills/research-code-audit-training/assets/research-contract-template.md), [rapid triage card](../skills/research-code-audit-training/assets/triage-card-template.md), [human–agent delegation contract](../skills/research-code-audit-training/assets/delegation-contract-template.md), and [evidence passport](../skills/research-code-audit-training/assets/evidence-passport-template.md). Run `python scripts/rcsl.py status-audit my-audit` for structural progress and `python scripts/rcsl.py lint-audit my-audit` for unresolved prompts. Neither command judges scientific correctness.
+Then complete the [G0 research contract](../skills/research-code-audit-training/assets/research-contract-template.md), [rapid triage card](../skills/research-code-audit-training/assets/triage-card-template.md), [human–agent delegation contract](../skills/research-code-audit-training/assets/delegation-contract-template.md), and [evidence passport](../skills/research-code-audit-training/assets/evidence-passport-template.md). Use `python scripts/rcsl.py audit status /absolute/path/outside-project/my-audit` for lifecycle status and `python scripts/rcsl.py audit lint /absolute/path/outside-project/my-audit` for template structure. Neither command judges scientific correctness. See the full [Mode Audit guide](AUDIT_MODE_EN.md).
 
 ## G0: research-contract gate (before every level)
 

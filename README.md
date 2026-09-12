@@ -52,6 +52,10 @@ python -m pip install -r requirements.txt
 python scripts/rcsl.py train overview
 python scripts/rcsl.py train doctor
 python scripts/rcsl.py train start --level 1
+
+# 可选：在仓库外建立可暂停恢复的学习工作区
+python scripts/rcsl.py train progress init \
+  --output ../my-rcsl-progress --learner "your declared label"
 ```
 
 完成 Level 1 后，按顺序继续 Level 2 → 3 → 4。任何时候都可运行以下命令确认**公开材料**的可运行性：
@@ -77,12 +81,13 @@ Mode Audit 默认**不执行目标项目代码、不联网、不修改目标项�
 旧的顶层命令（如 `doctor`、`start`、`validate`、`init-audit`）仍作为兼容别名保留；新工作流应使用上面的 `train` / `audit` 命名空间。
 
 完整的按角色说明见 [开始指南](docs/GETTING_STARTED.md)（[English](docs/GETTING_STARTED_EN.md)）。
+学习进度、不可变重做、人工 Rubric 与跨层 Capstone 见 [Mode Train 指南](docs/TRAIN_MODE.md)。
 
 ## Choose your path
 
 | 你现在想做什么？ | 从这里开始 | 你会得到什么 |
 | --- | --- | --- |
-| **学习者**：练习发现“可运行但不可信”的科研代码 | [四级训练包](LLM4SBR_research_audit_training_v2/README.md) → `python scripts/rcsl.py train start --level 1` | 基于证据的审计记录，而不只是一个候选答案 |
+| **学习者**：练习发现“可运行但不可信”的科研代码 | [Mode Train 指南](docs/TRAIN_MODE.md) → `python scripts/rcsl.py train progress init ...` | 可恢复 Evidence Passport、不可变尝试、人工反馈与跨层 Capstone |
 | **复现者 / 审稿人**：先理解论文，再看源码 | [Source-blind 论文学习协议](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md) | `PRE_AUDIT_BASELINE`：公式、数据流、指标和 claim 边界 |
 | **项目负责人 / 审计员**：审计一个真实项目并管理证据 | [Mode Audit 指南](docs/AUDIT_MODE.md) → `python scripts/rcsl.py audit init ...` | 绑定 commit 的 G0、finding/evidence 生命周期、可验证的本地事件链与人工复审报告 |
 | **研究负责人**：把另一篇论文变成训练包 | [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md) → `python scripts/rcsl.py install-skill --dry-run` | 需经人类批准的题目设计规格与可验证训练包 |
@@ -96,7 +101,8 @@ flowchart LR
     L1 --> L2[Level 2<br/>流水线完整性]
     L2 --> L3[Level 3<br/>科学有效性]
     L3 --> L4[Level 4<br/>Agent 实验治理]
-    L4 --> T[可信的<br/>研究主张]
+    L4 --> C[Capstone<br/>跨层事故响应]
+    C --> T[可信的<br/>研究主张]
 ```
 
 | Level | 你要证明的核心问题 | 首个公开入口 |
@@ -105,6 +111,7 @@ flowchart LR
 | 2 · Pipeline integrity | 数据身份、切分、训练和评估流水线是否完整？ | [Level 2](LLM4SBR_research_audit_training_v2/level_2_pipeline_integrity/README.md) |
 | 3 · Scientific validity | 比较是否公平，证据是否真的支撑科学主张？ | [Level 3](LLM4SBR_research_audit_training_v2/level_3_scientific_validity/README.md) |
 | 4 · Agent governance | Agent 的权限、预算、审批和审计轨迹是否受控？ | [Level 4](LLM4SBR_research_audit_training_v2/level_4_agent_experiment_governance/README.md) |
+| Capstone（不是 L5） | 能否在跨层事故中完成分诊、委派、影响面、claim 与沟通闭环？ | [Capstone brief](LLM4SBR_research_audit_training_v2/CAPSTONE_BRIEF.md) |
 
 四级回答的是“**信任首先在哪一层失效**”，不是现代程序员能力的全部清单。完整框架在四级之外加入：
 

@@ -21,6 +21,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from stewardship_lab import audit as audit_core
+from stewardship_lab import training as training_core
 
 
 TRAINING_ROOT = REPOSITORY_ROOT / "LLM4SBR_research_audit_training_v2"
@@ -463,6 +464,8 @@ def command_overview() -> int:
     print("Choose an explicit mode:")
     print("  python scripts/rcsl.py train start --level 1")
     print("                                             Begin the human audit curriculum")
+    print("  python scripts/rcsl.py train progress init --help")
+    print("                                             Keep resumable attempts and human reviews")
     print("  python scripts/rcsl.py train validate    Run learner-visible public checks")
     print("  python scripts/rcsl.py audit --help      Audit a real, clean Git project")
     print("  python scripts/rcsl.py install-skill --dry-run")
@@ -472,7 +475,7 @@ def command_overview() -> int:
     print("init-audit, lint-audit, and status-audit.")
     print()
     print("Levels: 1 Algorithm semantics · 2 Pipeline integrity ·")
-    print("        3 Scientific validity · 4 Agent experiment governance")
+    print("        3 Scientific validity · 4 Agent experiment governance · cross-layer Capstone")
     return 0
 
 
@@ -904,6 +907,72 @@ def build_parser() -> argparse.ArgumentParser:
         help="Curriculum level to begin (1 through 4).",
     )
 
+    train_progress = train_commands.add_parser(
+        "progress",
+        help="Manage an external, resumable learner record with declared human reviews.",
+        description=(
+            "Manage local training attempts and human review records. Automatic checks "
+            "assess structure only; they do not judge answers or scientific correctness."
+        ),
+    )
+    progress_commands = train_progress.add_subparsers(
+        dest="progress_command", required=True
+    )
+    progress_init = progress_commands.add_parser(
+        "init", help="Create a new local training workspace outside this repository."
+    )
+    progress_init.add_argument("--output", type=Path, required=True)
+    progress_init.add_argument(
+        "--learner", required=True, help="Declared learner label; not authenticated identity."
+    )
+
+    progress_status = progress_commands.add_parser(
+        "status", help="Show separate attempt, structure, and human-review states."
+    )
+    progress_status.add_argument("workspace", type=Path)
+    progress_status.add_argument("--json", action="store_true")
+
+    progress_check = progress_commands.add_parser(
+        "check", help="Check worksheet structure only; never calculate correctness or maturity."
+    )
+    progress_check.add_argument("workspace", type=Path)
+    progress_check.add_argument("--target", choices=training_core.TARGETS, required=True)
+    progress_check.add_argument("--json", action="store_true")
+
+    progress_submit = progress_commands.add_parser(
+        "submit", help="Freeze a structurally complete worksheet as an immutable attempt."
+    )
+    progress_submit.add_argument("workspace", type=Path)
+    progress_submit.add_argument("--target", choices=training_core.TARGETS, required=True)
+    progress_submit.add_argument("--note", default="")
+    progress_submit.add_argument(
+        "--operation-id", help="Stable retry ID for exactly-once local mutation semantics."
+    )
+
+    progress_review = progress_commands.add_parser(
+        "review", help="Append one named human review bound to a frozen attempt."
+    )
+    progress_review.add_argument("workspace", type=Path)
+    progress_review.add_argument("--target", choices=training_core.TARGETS, required=True)
+    progress_review.add_argument("--attempt", default="latest")
+    progress_review.add_argument("--reviewer", required=True)
+    progress_review.add_argument("--decision", choices=training_core.REVIEW_DECISIONS, required=True)
+    for flag in ("recognize", "prove", "direct", "steward"):
+        progress_review.add_argument(
+            f"--{flag}", choices=training_core.RATING_VALUES, required=True
+        )
+    progress_review.add_argument("--rationale", required=True)
+    progress_review.add_argument("--strengths", required=True)
+    progress_review.add_argument("--gaps", required=True)
+    progress_review.add_argument("--operation-id")
+
+    progress_export = progress_commands.add_parser(
+        "export", help="Create a redacted, non-overwriting report inside the workspace."
+    )
+    progress_export.add_argument("workspace", type=Path)
+    progress_export.add_argument("--output", type=Path, required=True)
+    progress_export.add_argument("--format", choices=("markdown", "json"), default="markdown")
+
     audit_parser = subcommands.add_parser(
         "audit",
         help=(
@@ -1095,6 +1164,83 @@ def _dispatch_train(args: argparse.Namespace) -> int:
         return command_start(args.level)
     if args.train_command == "validate":
         return command_validate()
+    if args.train_command == "progress":
+        if args.progress_command == "init":
+            training_core.initialize_workspace(args.output, learner_label=args.learner)
+            print(f"Training workspace CREATED: {args.output}")
+            print("Edit worksheets/*.md, then run train progress check and submit.")
+            print("Automatic checks are structural only; this public case is not a verified blind challenge.")
+            return 0
+        if args.progress_command == "status":
+            status = training_core.get_status(args.workspace)
+            if args.json:
+                print(json.dumps(status, indent=2, sort_keys=True, ensure_ascii=False))
+            else:
+                print(f"Overall state: {status['overall_state']}")
+                print(f"Exposure state: {status['exposure_state']}")
+                for target, record in status["targets"].items():
+                    print(
+                        f"{target}: attempt={record['attempt_state']}; "
+                        f"structure={record['structure_state']}; "
+                        f"human-review={record['human_review_state']}; "
+                        f"draft={record['current_draft_state']}"
+                    )
+                print("No automatic result above is a scientific or maturity verdict.")
+            return 0
+        if args.progress_command == "check":
+            assessment = training_core.check_worksheet(args.workspace, args.target)
+            if args.json:
+                print(json.dumps(assessment, indent=2, sort_keys=True, ensure_ascii=False))
+            else:
+                print(f"{args.target} structure: {assessment['structure_status'].upper()}")
+                for heading in assessment["missing_sections"]:
+                    print(f"  Missing section: {heading}")
+                for heading in assessment["empty_sections"]:
+                    print(f"  Empty section: {heading}")
+                if assessment["placeholder_count"]:
+                    print(f"  Template prompts remaining: {assessment['placeholder_count']}")
+                print("Semantic, scientific, and maturity assessment: NOT PERFORMED")
+            return 0 if assessment["structure_status"] == "complete" else 1
+        if args.progress_command == "submit":
+            attempt = training_core.submit_attempt(
+                args.workspace,
+                args.target,
+                note=args.note,
+                operation_id=args.operation_id,
+            )
+            print(f"Attempt FROZEN: {attempt['id']} ({attempt['worksheet_sha256']})")
+            print("State: AWAITING HUMAN REVIEW")
+            print("This submission has structural completeness only, not a correctness verdict.")
+            return 0
+        if args.progress_command == "review":
+            review = training_core.record_review(
+                args.workspace,
+                args.target,
+                attempt_id=args.attempt,
+                reviewer=args.reviewer,
+                decision=args.decision,
+                ratings={
+                    "Recognize": args.recognize,
+                    "Prove": args.prove,
+                    "Direct": args.direct,
+                    "Steward": args.steward,
+                },
+                rationale=args.rationale,
+                strengths=args.strengths,
+                gaps=args.gaps,
+                operation_id=args.operation_id,
+            )
+            print(f"Human review RECORDED: {review['id']} for {review['attempt_id']}")
+            print(f"Declared decision: {review['decision']}")
+            print("The CLI validated record consistency; it did not generate or verify the judgment.")
+            return 0
+        if args.progress_command == "export":
+            output = training_core.export_progress(
+                args.workspace, args.output, format_name=args.format
+            )
+            print(f"Redacted training progress CREATED: {output}")
+            print("The export contains declared records, not scientific certification.")
+            return 0
     raise AssertionError(f"Unhandled train command: {args.train_command}")
 
 
@@ -1143,11 +1289,14 @@ def main(argv: list[str] | None = None) -> int:
             return _dispatch_train(args)
         if args.command == "audit":
             return _dispatch_audit(args)
+    except training_core.TrainingError as error:
+        print(f"Training operation refused: {error}", file=sys.stderr)
+        return 1
     except audit_core.AuditError as error:
         print(f"Audit operation refused: {error}", file=sys.stderr)
         return 1
     except OSError as error:
-        print(f"Audit operation failed: {error}", file=sys.stderr)
+        print(f"Local operation failed: {error}", file=sys.stderr)
         return 2
     if args.command == "overview":
         return command_overview()

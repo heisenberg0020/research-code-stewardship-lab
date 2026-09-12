@@ -10,6 +10,8 @@ Canonical entry points are `python scripts/rcsl.py train ...` and `python script
 - [Original LLM4SBR repository](https://github.com/tsinghua-fib-lab/LLM4SBR): the official implementation source.
 - `docs/GETTING_STARTED.md`: Chinese task-oriented start guide for learners, auditors, reviewers, maintainers, and research owners.
 - `docs/GETTING_STARTED_EN.md`: English version of the task-oriented start guide.
+- `docs/TRAIN_MODE.md`: Chinese command and trust-boundary guide for resumable learning progress, human review, retries, capstone, and export.
+- `docs/TRAIN_MODE_EN.md`: English version of the Mode Train progress guide.
 - `docs/AUDIT_MODE.md`: Chinese command and boundary guide for the real-project audit lifecycle.
 - `docs/AUDIT_MODE_EN.md`: English version of the Mode Audit guide.
 - `docs/DUAL_MODE_ROADMAP.md`: Chinese phased implementation plan for the shared Train/Audit system.
@@ -20,14 +22,17 @@ Canonical entry points are `python scripts/rcsl.py train ...` and `python script
 - `docs/CASE_RELEASE_MODEL_EN.md`: English version of the case release model.
 - `docs/images/research-code-stewardship-banner.svg`: the repository’s self-contained Paper → Code → Evidence → Governance banner.
 - `requirements.txt`: learner-facing runtime dependency list for local public checks.
-- `scripts/rcsl.py`: unified public-only CLI. `train overview|doctor|start|validate` covers the curriculum; `audit init|status|lint|gate|preflight|rebaseline|finding|evidence|verify|report` covers the real-project lifecycle.
+- `scripts/rcsl.py`: unified public-only CLI. `train overview|doctor|start|validate` covers course navigation and public checks; `train progress init|status|check|submit|review|export` covers local learning records; `audit init|status|lint|gate|preflight|rebaseline|finding|evidence|verify|report` covers the real-project lifecycle.
 - `stewardship_lab/audit.py`: standard-library audit core for clean-Git binding, G0 gates, structured findings/evidence, allowed state transitions, baseline drift, local hash-chain verification, and report data/rendering.
-- `stewardship_lab/__init__.py`: public package boundary for the audit core.
+- `stewardship_lab/training.py`: standard-library training-progress core for external workspaces, structural worksheet checks, immutable attempt snapshots, named human reviews, retries, local consistency verification, and redacted exports.
+- `stewardship_lab/__init__.py`: public package boundary for the stewardship cores.
 - `LLM4SBR_code_judgement_training/`: the earlier local algorithm-code judgement exercise.
 - `LLM4SBR_research_audit_training_v2/`: the four-level training package and its course hub.
   - `CASE_FILE.md` / `CASE_FILE_EN.md`: versioned scope, provenance, G0 boundary, Open Demo status, and review triggers for the current case.
+  - `CAPSTONE_BRIEF.md`: public synthetic cross-layer incident brief; contains no evaluator mapping and requires human review.
 - `tests/research_audit_training_v2/`: package, shared-contract, Level 1, and Level 2 acceptance tests.
 - `tests/test_audit_lifecycle.py`: synthetic clean-Git lifecycle tests, including dirty-project refusal, G0/preflight, drift/rebaseline, findings/evidence/transitions, tamper detection, and reports.
+- `tests/test_training_progress.py`: external-workspace tests for initialization, structure-only checks, immutable retries, human-review consistency/disagreement, tamper and symlink refusal, offline resume, and redacted export.
 - `docs/superpowers/specs/`: approved four-level design specification.
 - `docs/superpowers/plans/`: test-driven implementation plan.
 - `docs/implementation-audit/`: RED/GREEN evidence, review decisions, corrections, and task reports.
@@ -36,6 +41,9 @@ Canonical entry points are `python scripts/rcsl.py train ...` and `python script
   - `assets/triage-card-template.md`: rapid localization and bounded investigation record.
   - `assets/delegation-contract-template.md`: human–Agent authority and evidence contract.
   - `assets/evidence-passport-template.md`: one finding or trust decision with its complete evidence chain.
+  - `assets/learner-evidence-passport-template.md`: L1–L4 worksheet used by a local progress workspace.
+  - `assets/capstone-response-template.md`: cross-layer incident response worksheet.
+  - `assets/maturity-rubric.md`: versioned human Recognize / Prove / Direct / Steward observation rubric.
   - `references/stewardship-competencies.md`: portable two-axis competency model for the Skill.
 
 ## Mode map
@@ -43,7 +51,9 @@ Canonical entry points are `python scripts/rcsl.py train ...` and `python script
 ```text
 Mode Train
   train overview / doctor / start / validate
-  └─ LLM4SBR_research_audit_training_v2/  learner-visible Open Demo
+  ├─ LLM4SBR_research_audit_training_v2/  learner-visible Open Demo
+  └─ train progress init → check → submit → human review → retry/status → export
+     └─ external learner workspace: worksheets/ + RUBRIC.md + CAPSTONE_BRIEF.md + progress.json
 
 Mode Audit
   audit init → status/lint → gate check/record → preflight
@@ -66,6 +76,8 @@ Mode Audit does **not execute target-project code, use the network, or modify th
 - Level 3 scientific validity: implemented as five structured, recomputable experiment dossiers with hidden scientific-policy probes.
 - Level 4 agent experiment governance: implemented as five closed approval/event/ledger/report timelines with hidden governance probes.
 - Explicit Mode Train namespace and compatibility aliases: implemented.
+- Mode Train progress lifecycle: implemented with an external resumable `progress.json`, separate structure/attempt/human-review states, immutable attempt snapshots, retry history, reviewer disagreement, explicit evidence gaps, a public synthetic capstone, and redacted Markdown/JSON export.
+- Capstone pass gate: implemented as a named human record; structural completeness cannot pass it, and the CLI does not generate a maturity or scientific verdict.
 - Real-project Mode Audit lifecycle: implemented for clean Git binding, draft/approved/blocked G0, status/lint/preflight, rebaseline, structured findings and evidence, constrained transitions, local integrity verification, and non-overwriting Markdown/JSON reports.
 
 All four levels have focused tests, isolated answer manifests, public checks, and external hidden verification.

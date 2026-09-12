@@ -33,8 +33,15 @@
 | L2 | Data identity, split, state, checkpoint, or evaluation flow | Multi-file pipelines, frozen specification, run artifacts |
 | L3 | Comparison design, evidence population, statistical rule, or claim scope | Planned/observed runs, aggregate, structured claim |
 | L4 | Authorization, approval, budget, record, or protected-evidence boundary | Frozen protocol, events, approvals, resource and report ledgers |
+| Capstone | Triage, delegation, blast radius, and release judgment when signals cross layers | Public synthetic incident brief, cross-layer response, named human review |
 
-The current case does not yet include a full unfamiliar-project capstone, real supply-chain review, production deployment lifecycle, or access-controlled evaluation service.
+The current case includes a public synthetic cross-layer capstone, but not an unfamiliar private-project capstone, real supply-chain review, production deployment lifecycle, or access-controlled evaluation service. It must not be described as confidential or unseen.
+
+## Local learning progress and human review
+
+`python scripts/rcsl.py train progress ...` creates a learner-owned workspace outside the repository and retains L1–L4 and capstone worksheets, immutable submission snapshots, retry relationships, human feedback, and redacted exports. Automated `check` verifies required sections, nonempty content, and resolved template prompts only; it does not judge meaning, scientific correctness, or maturity.
+
+Recognize / Prove / Direct / Steward observations can be declared only by a named human reviewer. A human L1–L4 `pass` requires the reviewer to record Recognize and Prove as `demonstrated`; a human capstone `pass` requires all four bands as `demonstrated`. The CLI validates declared consistency only, not the judgment itself. See the [Mode Train guide](../docs/TRAIN_MODE_EN.md).
 
 ## Public validation
 
@@ -46,7 +53,7 @@ python skills/research-code-audit-training/scripts/validate_training_package.py 
 python LLM4SBR_research_audit_training_v2/run_all_public_checks.py
 ```
 
-The expected four `LEVEL n: PASS` lines mean only that this version satisfies the public validators' package contract. They do not expose teaching judgments or replace human audit.
+The expected four `LEVEL n: PASS` lines mean only that this version satisfies the public validators' package contract. They do not expose teaching judgments or replace human audit. Likewise, `structure=complete` in a learning workspace is not a semantic, scientific, or maturity pass.
 
 ## Release and isolation boundary
 

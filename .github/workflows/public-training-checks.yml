@@ -45,7 +45,10 @@ jobs:
 
       - name: Check public command entry point and audit lifecycle
         run: |
-          python -m unittest tests.test_rcsl tests.test_audit_lifecycle
+          python -m unittest \
+            tests.test_rcsl \
+            tests.test_audit_lifecycle \
+            tests.test_training_progress
 
       - name: Run Level 1-4 public regression checks
         run: |

@@ -37,7 +37,14 @@ def validate(root: Path) -> list[str]:
     if not root.is_dir():
         return [f"not a directory: {root}"]
 
-    for name in ("README.md", "CASE_FILE.md", "FRAMEWORK_OVERVIEW.md", "PROGRESSION.md"):
+    for name in (
+        "README.md",
+        "CASE_FILE.md",
+        "CASE_FILE_EN.md",
+        "FRAMEWORK_OVERVIEW.md",
+        "PROGRESSION.md",
+        "CAPSTONE_BRIEF.md",
+    ):
         if not (root / name).is_file():
             errors.append(f"missing root file: {name}")
 
