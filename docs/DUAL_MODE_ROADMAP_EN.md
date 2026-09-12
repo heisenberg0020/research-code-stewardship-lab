@@ -1,130 +1,124 @@
-# RCSL Dual-Mode Roadmap
+# Research Code Stewardship Lab: Roadmap after scope closure
 
-**Goal:** let RCSL support both repeatable capability training (**Mode Train**) and bounded real research audits (**Mode Audit**) without presenting an automated structural check as scientific judgment or repackaging an already public case as an “unseen” blind task.
+[中文](DUAL_MODE_ROADMAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Case release model](CASE_RELEASE_MODEL_EN.md)
 
-[中文](DUAL_MODE_ROADMAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Case release model](CASE_RELEASE_MODEL_EN.md) · [Offline static view](VIEW_MODE_EN.md)
+## Goal and boundary
 
-## Invariants
+RCSL retains only two core user outcomes:
 
-1. **Local first:** CLI plus Markdown/JSON are the authoritative interface; any future UI is only an optional view of the same model.
-2. **Standard-library first:** core navigation, templates, schemas, and package checks use the Python standard library by default; heavy runtimes remain optional.
-3. **Original projects are read-only:** audit commands do not modify papers, source, data, or existing results by default; new artifacts write only to a user-specified output directory.
-4. **Human final decision:** an agent may gather, run bounded checks, and draft; a human freezes G0, approves authority, interprets evidence, permits claims, and closes incidents.
-5. **Structure is not science:** `PASS` only means that a given version passed a structural, format, or bounded-runtime contract. It does not prove paper fidelity, experimental fairness, security, or a true conclusion.
+- **Mode Audit** helps an accountable owner audit real research code and preserve traceable evidence and human decisions.
+- **Mode Train** develops the human ability to recognize, prove, and handle research-code risks in the coding-agent era.
 
-## Two modes and one common kernel
+`export` and `package` are case-release utilities, not a third mode. Presentation, hosting, and other integrations will be reconsidered only after the core workflows have completed real pilots.
 
-| Item | Mode Train | Mode Audit |
+## Status terms must remain distinct
+
+| Status | Meaning | It does not establish |
 | --- | --- | --- |
-| Purpose | Practice finding research errors that run but should not be trusted in prepared cases | Form an auditable judgment about papers, source, experiments, and agent actions within user-authorized scope |
-| Inputs | Versioned case, public brief, learner worksheet, public checks | User-supplied research contract, read-only sources, permitted scope, output directory, approval rules |
-| Outputs | Evidence Passport, progress record, capstone deliverable | Research Contract, Triage Card, Evidence Passport, named G0 gate decision, local lifecycle ledger, and review report |
-| Human role | Reason independently within the rules, retain evidence, accept or request feedback | Freeze G0, set authority and risk boundaries, approve runs and final conclusion |
-| Does not promise | A real blind assessment or automatic grading equal to scientific correctness | An unattended audit, automatic publication, or automatic changes to the original project |
+| `implemented` | The corresponding code, command, or document exists | Correct design, usability, or safety |
+| `internally verified` | Automated tests and controlled synthetic scenarios pass | Successful use by real projects or learners |
+| `field validated` | External real users completed an end-to-end task in a real setting, with retained observations | Production-grade security, recovery, or operations |
+| `production ready` | Threat model, identity and access, recovery, migration, monitoring, governance, and maintenance ownership are closed | Guarantees outside the declared deployment boundary |
 
-Both modes reuse the same **common kernel**:
+The roadmap no longer uses an unqualified “complete.” Every milestone must identify which status it has reached.
 
-```text
-G0 Research Contract / Case Manifest
-→ Triage Card + Delegation Contract
-→ Evidence Passport (location · contract · command/artifact · causal effect · boundary)
-→ named G0 gate decision + local lifecycle ledger
-→ rendered Markdown/JSON review report with project baseline, G0, finding/evidence summary, and known limits
-```
+## Honest current baseline
 
-The vertical axis always classifies by the **first failed contract**: L1 semantics, L2 pipeline, L3 scientific validity, or L4 agent governance. The seven accountable capabilities and four maturity bands are defined in the [competency model](COMPETENCY_MODEL_EN.md).
+| Work surface | Implemented | Internally verified | Field validated | Production ready | Current judgment |
+| --- | --- | --- | --- | --- | --- |
+| Four-level public training case | Yes | Yes | No | No | Usable as an experimental public curriculum; no learning-effectiveness claim |
+| Phase 1 Audit lifecycle | Yes | Yes | No | No | Alpha; core boundaries and recovery still need closure |
+| Phase 2 Training progress | Yes | Yes | No | No | Experimental; reviewer-object and case-version binding remain incomplete |
+| Phase 3A local release/packaging | Yes | Yes | No | No | Verifies local file and package contracts only |
+| Phase 3B controlled Blind operation | No | No | No | No | Depends on a real private case, people, and infrastructure; stop expanding local code |
+| Phase 4 presentation, registry, and hosting | No | Not applicable | No | No | Pruned from the active product and deferred |
 
-## Priority overview
+Passing tests supports only `internally verified`. It does not prove scientific correctness, learning gains, successful independent audit, or production safety.
 
-| Phase | Status | Priority | Main risk |
-| --- | --- | --- | --- |
-| Phase 0: current baseline | **Complete** | P0 | A public case is mistaken for a blind task or scientific certification |
-| Phase 1: explicit Train/Audit and real closed loop | **Completed this turn** | P0 | Unauthorized default writes/execution, or tool output mistaken for a conclusion |
-| Phase 2: learner progress, human rubric, and capstone | **Complete** | P1 | Mechanical scoring, answer leakage, overstated learning gains |
-| Phase 3: Demo export and Blind Challenge split packages | **3A local tooling complete; 3B controlled operation pending** | P2 | Pseudo-blinding, missing access control, licensing and measurement-validity failures |
-| Phase 4: optional UI/registry/integrations | **4A offline static view complete; 4B dashboard/hosting/integrations undecided** | P3 | Premature platform work, privacy/lock-in, CLI/UI semantic drift |
+## Phase 1: close Audit core risks first
 
----
+**Current status:** `implemented` and `internally verified`; not `field validated`.
 
-## Phase 0: current baseline (complete)
+Retained essentials are clean-Git baselines, external workspaces, G0, finding/evidence lifecycle, the local event chain, preflight, rebaseline, verification, and human-review reports.
 
-**Purpose:** provide an honest, runnable public training starting point.
+Risks that must close first:
 
-| Item | Content |
+1. Revalidate on every read and write that the workspace remains outside the target project; initialization-only checking is insufficient.
+2. Give G0 one authoritative decision source so template text and machine state cannot contradict each other.
+3. Make multi-file mutation atomic or provide an explicit and tested recovery procedure.
+4. Enforce size and capacity limits before writing so a successful mutation cannot create an unverifiable workspace.
+5. Rename states such as `review-ready` to match their actual guarantee and avoid confusing preflight readiness with audit completion.
+
+**Next exit gate:** regression tests cover every item above and a fresh temporary project completes a failure-recovery scenario. This still raises only internal confidence.
+
+## Phase 2: ensure humans review the frozen object
+
+**Current status:** `implemented` and `internally verified`; not `field validated`.
+
+Retained essentials are external learning workspaces, structural checks, immutable attempts, multiple reviewer records, retry relationships, the four-band human rubric, capstone, and redacted export.
+
+Closure targets:
+
+1. Provide `attempt show` or a reviewer packet so a reviewer sees the exact frozen response bound by the system.
+2. Content-bind the complete learner-visible case instead of recording only repository `HEAD`.
+3. Merge competing answer surfaces and make the workspace worksheet the sole submit-able entry.
+4. Give the capstone inspectable diffs, logs, configurations, approvals, or ledger artifacts rather than only a narrative.
+5. Preserve the human-judgment boundary; structural checks must not infer correctness or maturity.
+
+**Next exit gate:** an independent reviewer can accurately assess a named attempt using only the reviewer packet, and any case-material change explicitly invalidates the case binding.
+
+## Phase 3: retain release contracts and stop simulating operations
+
+### 3A local tooling
+
+**Current status:** `implemented` and `internally verified`.
+
+Retain Open Demo export, strict manifests and checksums, local three-role staging, and standalone verification. They establish only consistency between retained bytes and declared package contracts. They provide no ACL, authenticated identity, confidentiality, independent evaluation, or scientific conclusion.
+
+### 3B controlled operation
+
+**Current status:** not `implemented`, and further local code must not be presented as operational completion.
+
+Resume only when all external prerequisites exist: a new never-public case, separate private storage, least privilege, access records, frozen scoring, an independent evaluator, controlled execution, human leakage review, named release sign-off, and a withdrawal drill.
+
+Experimental readiness work must not enter the core baseline unless it directly serves a confirmed real pilot.
+
+## Phase 4: pruned and deferred
+
+The earlier offline presentation prototype passed internal contract tests, but it had no evidence of real user demand and could place material without a shared subject/case binding on the same page. It added substantial duplicate schema, filesystem hardening, and maintenance cost without closing the Audit or Training journey.
+
+The active product therefore contains no presentation, Registry, Dashboard, or hosted layer. Git history retains the design process. Reopening this work requires all of the following:
+
+1. a stable shared subject/case/artifact identity model;
+2. at least one real Audit pilot and one real Training pilot;
+3. user research showing that presentation or collaboration is an actual blocker; and
+4. named ownership for privacy, permissions, accessibility, deployment, and maintenance.
+
+## New execution order
+
+Work no longer advances by adding more phases. It advances by closing user journeys and risks:
+
+1. **Prune and freeze the baseline:** remove the old training tree, legacy top-level aliases, and unvalidated presentation surface; keep documentation, CLI, tests, and CI aligned.
+2. **Audit Core Closure:** close Phase 1 workspace-boundary, single-source G0, transactional recovery, and pre-write capacity issues.
+3. **Unify identity and evidence:** define `subject → case → artifact → evidence → decision → review`, content-address every record, and support schema migration.
+4. **Acquire Audit evidence:** import evidence with digests, commands, exit status, environment, and provenance instead of retaining only free-text references.
+5. **Close the Training reviewer flow:** deliver reviewer packets, a complete case manifest, and an artifact-rich capstone.
+6. **Run a real public Audit pilot:** audit one public research repository, have a second person review from exported material alone, and record completion time, blockers, and attribution errors.
+7. **Run a real learner/reviewer pilot:** observe whether users can localize, prove, and communicate faults; never infer learning gains from a single completion.
+8. **Conditionally resume Phase 3B:** begin only when a real private case, independent people, and infrastructure exist.
+9. **Re-evaluate Phase 4:** design the smallest presentation surface only from navigation or collaboration problems observed in pilots.
+
+No step advances automatically to `field validated` or `production ready` because its test count increased.
+
+## Decision gates before the next step
+
+| Decision | Required question |
 | --- | --- |
-| Existing deliverables | L1–L4 training package; G0/competency/release-model documents; source-blind paper-study protocol; public navigation, environment diagnosis, and public-check entry points; CI and public validation record |
-| Acceptance criteria | Public Level 1–4 checks run in a supported environment; documentation explains first failed contract, answer-isolation boundary, and limits of `public PASS`; public entry points do not depend on instructor material |
-| Non-goals | Calling LLM4SBR or any currently public case an unseen task, confidential exam, production security audit, or proof of paper reproduction |
-| Dependencies | Existing training package, Python environment, public sources, and human maintenance |
-| Exit condition | **Already met.** Later features must preserve these boundaries rather than weaken transparency for a smoother experience |
+| Change the Audit schema | Can an old workspace be recognized, migrated, or explicitly rejected? How is failure recovered? |
+| Record evidence | Is it bound to real artifact bytes, generation method, environment, and responsible party rather than only prose? |
+| Record a human review | Did the reviewer see the exact frozen object being signed? Is identity merely a label or an authenticated principal? |
+| Claim field validity | Is there a real project, real participants, retained observation, and documented failure cases? |
+| Release a Blind Challenge | Do never-public provenance, private storage, least privilege, independent evaluation, and a withdrawal drill actually exist? |
+| Build UI or hosting | Is the core schema stable? Do pilots show this is the most important blocker? Who owns privacy, security, and operations? |
 
-## Phase 1: explicit Train/Audit commands and real audit closed loop (completed this turn)
-
-**Purpose:** let users know from the first command whether they are training or auditing a real project, and give Audit a full loop from G0 to a human decision.
-
-| Item | Content |
-| --- | --- |
-| Concrete deliverables | Explicit command families: `rcsl train overview`, `rcsl train doctor`, `rcsl train start --level 1..4`, and `rcsl train validate`; plus `rcsl audit init`, `status`, `lint`, `gate check`, `gate record`, `preflight`, `rebaseline`, `finding add/list/transition`, `evidence add`, `verify`, and `report build`. The four local templates are `research-contract-template.md`, `evidence-passport-template.md`, `triage-card-template.md`, and `delegation-contract-template.md`; an audit workspace outside the project is written only through `--output`; a temporary clean-Git E2E test |
-| Closed loop | `audit init` binds a clean `HEAD` and creates G0 `draft` → a human completes the research contract and remaining templates → `audit lint` → `audit gate record --decision approved` → `audit preflight` → findings/evidence with reasoned transitions → `audit verify` and a local Markdown/JSON review report |
-| Acceptance criteria | A temporary Git fixture completes “init → complete templates/lint → G0 approve/preflight → finding/evidence → legal `verified`/`closed` transition → verify/report.” `audit init` requires an existing immediate parent and exclusive writes through pinned parent/new-directory descriptors; `report build` pins workspace identity, refuses overwrite, and emits `0600` on POSIX. Path-replacement tests prove neither writes into a redirect target. Tests also preserve target `HEAD`, worktree state, and tracked bytes; Audit executes no project code, uses no network, reads no isolated answers by default, and issues no scientific verdict |
-| Non-goals | Letting an agent define the question, run arbitrary scripts, repair the original project directly, approve release automatically, or give an unsupported correctness verdict |
-| Dependencies | Stable CLI schema, public templates, project-read-only/external-workspace policy, local hash-chain lifecycle, temporary Git E2E test, and human-review rules |
-| Exit condition | **Met.** The standard-library CLI has completed the stated loop in a fresh temporary clean-Git directory; tests confirm that fixture's target `HEAD`, worktree status, and tracked file remain unchanged, and docs state every command’s authority and boundary |
-
-**Risk control:** Audit commands only read the target project or record local audit material; preflight does not grant execution authority. With incomplete G0 or no current `approved` gate, the tool refuses the next action or returns `needs-human-decision`, rather than guessing.
-
-## Phase 2: learner progress, human rubric, and cross-level capstone (complete)
-
-**Purpose:** turn “ran an exercise” into observable capability growth without treating a guessed answer or automated score as research judgment.
-
-| Item | Content |
-| --- | --- |
-| Concrete deliverables | `train progress init/status/check/submit/review/export`; a learner workspace outside the repository with one atomically updated `progress.json`; L1–L4 Evidence Passport and capstone worksheets; a human Recognize / Prove / Direct / Steward rubric; immutable submission snapshots, retry links, multi-reviewer feedback, and redacted Markdown/JSON export |
-| Implemented loop | `progress init` → edit a worksheet → `check` structure → `submit` a frozen attempt → `review` with a named human judgment → retry from explicit evidence gaps → resume offline with `status` → create a non-overwriting redacted `export`. The editable draft, latest frozen attempt, and history remain distinct |
-| Acceptance criteria | Progress pauses and resumes offline; status separates worksheet structure, attempt state, human review, and unassessed scientific correctness; reviewer differences are not averaged; the capstone requires G0, triage, delegation, blast radius, claim boundary, remediation, and stakeholder communication; the public workflow neither reads nor exports answer mappings |
-| Non-goals | Global leaderboard, judging research ability from a candidate letter, claiming learning impact from one completion, or putting hidden answers in a client-side scorer |
-| Dependencies | Phase 1 common artifacts and schemas; versioned human rubric; public synthetic incident; answer-isolation and review design; standard-library atomic writes and a local exclusive lock |
-| Exit condition | **Met.** A learner can complete, pause, resume, and export an evidence record locally; the system retains each reviewer's rubric observations, decision, and gap explanation so humans can explain disagreement; the capstone passes only through an explicit named human `pass` with all four observations declared `demonstrated` |
-
-**Risk control:** the CLI checks sections, content, and unresolved prompts only; it never infers meaning, scientific correctness, or maturity. Digests and atomic replacement in `progress.json` provide local consistency, not identity authentication or external immutability. The current case remains `open-demo-honor-isolation`. Do not claim the curriculum improves real research quality without preregistered evidence. See the [Mode Train guide](TRAIN_MODE_EN.md) for exact commands.
-
-## Phase 3: Open Demo export and true Blind Challenge split packages (partially complete)
-
-**Purpose:** support honest public teaching releases and establish proper package boundaries for a future controlled blind assessment.
-
-| Item | Content |
-| --- | --- |
-| Phase 3A: local tooling (complete) | `export open-demo --output NEW_DIR --actor LABEL [--run-public-checks]` creates a self-verifiable frozen snapshot of the current LLM4SBR Open Demo; `export verify BUNDLE [--json]` checks its exact root/payload and byte-compares the trusted verifier/boundary from a trusted checkout. `package blind --manifest ... --challenge-source ... --evaluator-source ... --maintainer-source ... --output NEW_PRIVATE_STAGING --actor LABEL` creates private `0700` staging; `package verify STAGING [--json]` checks all three packages, exact source inventories, executable bits, BUILD_RECORD, bounded leakage rules, and private POSIX modes |
-| 3A acceptance criteria | Open Demo and Blind outputs remain outside public Git, name nonexistent targets, and have existing immediate parents. The Blind manifest and three sources also remain outside public Git; the sources are distinct and pairwise non-nested, and the Blind output neither contains nor is contained by any source. On POSIX, the manifest/immediate parent have no group/other permission bits. Strict JSON rejects floats, duplicate/unknown fields, and Boolean integer substitutes; versions use strict SemVer, timestamps use canonical UTC RFC 3339 `YYYY-MM-DDTHH:MM:SS[.fraction]Z`, and template placeholders fail closed. Each role's non-generated payload exactly equals `source_inventory`; BUILD_RECORD binds tool-revision scope/worktree state and packager/verifier digests. After normal assembly, all three roles pass standalone verification from their own roots without reading siblings, and fail closed on capacity, unreadable directories, symlinks/special files, and protected paths. Repository-side trust verification is coupled to the corresponding tool revision, so an old package must be checked with its recorded tool version after trusted bytes change. Challenge excludes controlled mappings/digests/metadata; staging stays `assembled-awaiting-controlled-placement`, and mode checks never masquerade as ACLs |
-| Phase 3B: controlled operation (pending) | Provide separate private evaluator/maintainer storage, least privilege, access records, frozen scoring rules, license review, independent evaluator, controlled execution, human leakage review, named release sign-off, and a leakage invalidation/withdrawal drill for a new never-public case |
-| Non-goals | Calling current LLM4SBR or any already public case an “unseen” blind task after recompressing, encrypting, or moving directories; treating a local packager as access control, confidentiality, or measurement-validity proof |
-| Dependencies | 3A is covered by standard-library local tooling and synthetic tests; 3B still depends on independent private evaluation storage, least privilege, access records, frozen scoring rules, license review, independent evaluator, and leakage-invalidation process |
-| Overall exit condition | **Not met.** A newly created, never-public case must complete split packaging, human leakage review, independent grading, and a leakage drill in a controlled environment; current public LLM4SBR remains explicitly Open Demo |
-
-**Key fact:** a historically public task does not become unseen by repackaging it. A true Blind Challenge needs a new, never-public case and operational capacity to protect it; local packaging and `package verify` can enforce file, digest, exact-package, and current POSIX-mode contracts only. They cannot validate ACLs, recover leaked information, or replace human operational gates. Completing Phase 3A local tooling does not change the fact that Phase 3B—and Phase 3 overall—remain incomplete. See the [case release model](CASE_RELEASE_MODEL_EN.md).
-
-## Phase 4: optional views, registry, and integrations (4A complete)
-
-**Purpose:** after the common kernel is stable, reduce navigation cost and improve case discovery without turning RCSL into a centralized-service dependency.
-
-| Item | Content |
-| --- | --- |
-| Phase 4A: offline static view (complete) | `view build --open-demo PATH [--open-demo PATH ...] --output NEW_EXTERNAL_DIR [--audit-workspace PATH] [--training-workspace PATH]` and `view verify VIEW [--json]`; at least one Open Demo reverified by the repository-side trusted verifier; fixed outputs `index.html`, `style.css`, `VIEW_BOUNDARY.md`, `VIEW_MANIFEST.json`, `CHECKSUMS.sha256`, `data/CASE_REGISTRY.json`, and optional Audit/Training evidence snapshots |
-| 4A acceptance criteria | Output is outside the public repository, nonexistent, has an existing immediate parent, and does not overlap inputs; the build executes no package/project code and uses no network; the page is fully offline with no JavaScript, outbound links, CDN, server, or network; Case Registry contains allowlisted fields only and excludes actor/reviewer/controlled scoring digests; Audit/Training evidence preserves `not_assessed`, known limitations, and human-decision boundaries and is explicitly locally sensitive; every view uses POSIX `0700`/`0600`; Blind staging/role packages fail closed before payload reads; exact root/payload, manifest/checksum, dynamic-dependency, and mode contracts are verifiable |
-| Phase 4B: interaction and hosting (undecided) | Consider an interactive dashboard, hosted Case Registry, multi-user synchronization, editor/CI/learning-platform integrations, and richer Evidence Passport browsing only after real demand and governance exist; 4B is not the default continuation of 4A |
-| Non-goals | Mandatory login; uploading private research material to a central service; making the view authoritative; replacing human approval with UI; inferring scientific correctness from rendering or verification; letting Blind material bypass Phase 3B; or calling a local snapshot a security-reviewed deployable site |
-| Dependencies | 4A reuses stable Phase 1–3A schemas, the trusted Open Demo verifier, Audit report data, and Training redacted export. 4B still requires real collaboration demand, privacy/security/accessibility review, threat modeling, and clear governance, hosting, and maintenance ownership |
-| Exit condition | **4A is met.** Every Train/Audit workflow remains usable without a UI; the static view is a disposable read-only projection, and closing it or working offline cannot lose cases, evidence, or human decisions. **This does not declare Phase 4B or Phase 4 overall complete.** |
-
-**Risk control:** 4A accepts at least one verified Open Demo and explicitly refuses Blind staging and all three role-package types. A view containing Audit/Training evidence stays local; `0700`/`0600` is a current POSIX-mode check, not an ACL, encryption, or copy prevention. `view verify` checks only the snapshot contract, not scientific correctness, continued source-workspace synchronization, or hosting safety. See the [offline static view guide](VIEW_MODE_EN.md). Consider 4B only after real cross-device collaboration demand and governance are established.
-
-## Decision gates
-
-| When | Question that must be answered |
-| --- | --- |
-| Entering Audit | Is the original project a clean Git worktree? Is the workspace outside it and nonexistent? Does G0 begin as `draft` for later human completion and review? |
-| Allowing execution | Audit itself never executes the project. If code execution, network access, protected material, source changes, or more budget are needed, is there a separate explicitly authorized tool flow? |
-| Forming a conclusion | Does the Evidence Passport distinguish facts, inferences, assumptions, unknowns, and permitted claims? |
-| Releasing a case | Is it an Open Demo or a Blind Challenge? Does the statement honestly match the controls? |
-| Building a static view | Is there at least one trusted-verified Open Demo? Are Blind inputs refused? If Audit/Training evidence is included, will it stay local and preserve `not_assessed` and known limitations? |
-| Shipping dashboard/hosting/integration | Can all evidence and human decisions still be retained locally, offline, and exportably? Are privacy, security, accessibility, permissions, and maintenance ownership explicit? |
+The next meaningful milestone is not another feature. It is one real Audit that a second person can independently review.

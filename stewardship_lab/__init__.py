@@ -23,18 +23,14 @@ from .release import (
     verify_blind_staging,
     verify_export,
 )
-from .view import ViewError, build_static_view, verify_static_view
-
 __all__ = (
     "AuditError",
     "ReleaseError",
-    "ViewError",
     "add_evidence",
     "add_finding",
     "assess_g0_gate",
     "bind_audit",
     "build_report_data",
-    "build_static_view",
     "export_open_demo",
     "inspect_clean_project",
     "list_findings",
@@ -47,5 +43,4 @@ __all__ = (
     "verify_audit_workspace",
     "verify_blind_staging",
     "verify_export",
-    "verify_static_view",
 )

@@ -4,9 +4,9 @@
 
 **Research Code Stewardship Lab** helps you decide whether runnable research code, experiments, and agent workflows still honor the paper, experimental protocol, and evidence trail behind them. It is not a code-writing speed course. It develops evidence-based research judgment for the coding-agent era.
 
-[中文指南](GETTING_STARTED.md) · [Repository map](../REPOSITORY_MAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Mode Train](TRAIN_MODE_EN.md) · [Mode Audit](AUDIT_MODE_EN.md) · [Case release](CASE_RELEASE_MODEL_EN.md) · [Offline view](VIEW_MODE_EN.md) · [Dual-mode roadmap](DUAL_MODE_ROADMAP_EN.md)
+[中文指南](GETTING_STARTED.md) · [Repository map](../REPOSITORY_MAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Mode Train](TRAIN_MODE_EN.md) · [Mode Audit](AUDIT_MODE_EN.md) · [Case release](CASE_RELEASE_MODEL_EN.md) · [Dual-mode roadmap](DUAL_MODE_ROADMAP_EN.md)
 
-The CLI has two explicit work paths: `rcsl.py train ...` develops human capability (it does not train a model), while `rcsl.py audit ...` records evidence and decisions for a real Git project. Case maintainers separately use `rcsl.py export ...` / `package ...` to create release artifacts, and local reviewers can use `rcsl.py view ...` to create a disposable offline read-only snapshot. None is a third audit mode or automatically approves a release or scientific conclusion. Legacy top-level commands remain compatibility aliases only.
+The CLI has two explicit work paths: `rcsl.py train ...` develops human capability (it does not train a model), while `rcsl.py audit ...` records evidence and decisions for a real Git project. Case maintainers separately use `rcsl.py export ...` / `package ...` to create release artifacts. Every entry point uses these explicit namespaces and none automatically approves a release or scientific conclusion.
 
 ## Choose your path
 
@@ -17,7 +17,6 @@ The CLI has two explicit work paths: `rcsl.py train ...` develops human capabili
 | **Reviewer / maintainer** | Run public checks and review the package contract, documentation, and entry points | A reproducible public-check report and a list of risks that still need human review |
 | **Research owner** | Freeze the paper–code–experiment protocol, then design a new package with the Skill | A human-approved four-level design specification—not unreviewed candidate code |
 | **Case publisher** | First decide whether the case is an already-public Open Demo or a never-public candidate separated from day one | A verifiable Open Demo bundle, or local three-package staging that still awaits controlled placement |
-| **Local reviewer** | Run `view build` with at least one verified Open Demo and optional Audit/Training workspaces | A JavaScript-free, outbound-link-free offline snapshot that needs no server—not a new verdict or deployable site |
 
 ---
 
@@ -249,29 +248,7 @@ Before any external release, human operators must still:
 
 Add `--json` to `package verify` when needed. This is a maintainer-side command that reads all three staging roles; never give it to learners or place it in the public Challenge environment. Assembly and this trusted staging verification use the private `BLIND_SOURCE.json` value of `scoring.digest` for an exact-value scan of Challenge source payloads. An isolated Challenge standalone does not know that value and can check only public rules, so its `PASS` cannot establish absence of an unknown private digest. Do not put `scoring.digest` or a commitment derived from private scoring material in Challenge; its public scoring reference retains only the protocol ID/version. Tooling also refuses version-control metadata and common secret paths/key suffixes; a file with an unknown suffix still receives content leakage scanning whenever it decodes as UTF-8. On POSIX, verification also requires the staging tree to have no group/other permission bits, but that is only a current-mode check—not an ACL check. It neither performs the operational gates above nor recovers information that was already public. See the [case release model](CASE_RELEASE_MODEL_EN.md) for the complete rules.
 
-Therefore, only **Phase 3A local release tooling** is complete. Phase 3B controlled placement, independent evaluation, human sign-off, and leakage drills—and Phase 3 overall—remain incomplete.
-
----
-
-## Path F: Browse public cases and local evidence offline
-
-Start with at least one Open Demo bundle verified by the current checkout's trusted verifier. The output must be a nonexistent directory outside the public repository, and its immediate parent must already exist. Audit and Training workspaces are optional:
-
-```bash
-python scripts/rcsl.py view build \
-  --open-demo /absolute/path/to/verified-open-demo \
-  --audit-workspace /absolute/path/to/audit-workspace \
-  --training-workspace /absolute/path/to/training-workspace \
-  --output /absolute/path/to/new-local-view
-
-python scripts/rcsl.py view verify /absolute/path/to/new-local-view
-```
-
-Repeat `--open-demo` as needed, but provide it at least once and no more than 32 times. The build reverifies every Open Demo, then creates a fixed-root `index.html`, `style.css`, boundary, manifest, checksums, case registry, and optional evidence JSON. Open `index.html` directly. The page has no JavaScript, outbound links, CDN, server, or network fallback.
-
-Blind staging and Challenge/Evaluator/Maintainer role packages are refused before their payload is read. Every view uses `0700` directories and `0600` files on POSIX; a view containing Audit or Training evidence is marked `local-sensitive-not-deployable`. Modes are not ACLs or encryption, so do not deploy or directly share it. The page preserves `not_assessed`, known limitations, and human-decision boundaries; it computes no scientific PASS.
-
-Add `--json` to `view verify` when needed. Success covers only the static snapshot's exact files, manifest/checksum, static-dependency, and local-mode contracts. It does not prove that a source workspace remained unchanged or establish scientific correctness, confidentiality, or secure hosting. See the [Phase 4A offline static view guide](VIEW_MODE_EN.md).
+Therefore, **Phase 3A local release tooling** is only `implemented` and `internally verified`. Phase 3B is not `implemented`, and Phase 3 as a whole is not `field validated`.
 
 ---
 
@@ -302,4 +279,3 @@ Every audit must therefore return to primary evidence, the frozen protocol, and 
 - Want a paper-first, source-blind baseline? Use the [Source-Blind Protocol](PAPER_ONLY_REPRODUCTION_PROTOCOL.md).
 - Want to adapt the workflow to your paper? Read the [Skill](../skills/research-code-audit-training/SKILL.md).
 - Exporting an Open Demo or preparing controlled split packages for a new case? Read the [case release model](CASE_RELEASE_MODEL_EN.md).
-- Want to browse verified Open Demo and local evidence offline? Read the [offline static view guide](VIEW_MODE_EN.md).

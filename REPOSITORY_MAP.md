@@ -2,7 +2,7 @@
 
 This public repository has two explicit operating modes built on one stewardship model. **Mode Train** develops human research-code judgment with the LLM4SBR Open Demo. **Mode Audit** binds an external workspace to a real project's clean Git `HEAD` and records G0, findings, evidence, lifecycle events, and a human-review report. The paper and original implementation remain available from their official sources and are not redistributed here.
 
-Canonical mode entry points are `python scripts/rcsl.py train ...` and `python scripts/rcsl.py audit ...`. Case maintainers additionally use `python scripts/rcsl.py export ...` and `python scripts/rcsl.py package ...` for release artifacts. `python scripts/rcsl.py view ...` creates or verifies a disposable offline read-only projection; it is not a third mode or authoritative store. Legacy top-level commands remain compatibility aliases.
+Canonical entry points are `python scripts/rcsl.py train ...` and `python scripts/rcsl.py audit ...`. Case maintainers additionally use `python scripts/rcsl.py export ...` and `python scripts/rcsl.py package ...` for release artifacts. These explicit namespaces are the complete active CLI surface; legacy top-level aliases and the unvalidated static-view surface have been pruned.
 
 ## Contents
 
@@ -14,8 +14,6 @@ Canonical mode entry points are `python scripts/rcsl.py train ...` and `python s
 - `docs/TRAIN_MODE_EN.md`: English version of the Mode Train progress guide.
 - `docs/AUDIT_MODE.md`: Chinese command and boundary guide for the real-project audit lifecycle.
 - `docs/AUDIT_MODE_EN.md`: English version of the Mode Audit guide.
-- `docs/VIEW_MODE.md`: Chinese Phase 4A offline static-view, sensitivity, and verification-boundary guide.
-- `docs/VIEW_MODE_EN.md`: English version of the offline static-view guide.
 - `docs/DUAL_MODE_ROADMAP.md`: Chinese phased implementation plan for the shared Train/Audit system.
 - `docs/DUAL_MODE_ROADMAP_EN.md`: English version of the dual-mode roadmap.
 - `docs/COMPETENCY_MODEL.md`: Chinese G0 + L1–L4 + seven cross-level capabilities and maturity model.
@@ -24,13 +22,11 @@ Canonical mode entry points are `python scripts/rcsl.py train ...` and `python s
 - `docs/CASE_RELEASE_MODEL_EN.md`: English version of the case release model and tooling guide.
 - `docs/images/research-code-stewardship-banner.svg`: the repository’s self-contained Paper → Code → Evidence → Governance banner.
 - `requirements.txt`: learner-facing runtime dependency list for local public checks.
-- `scripts/rcsl.py`: unified CLI. `train overview|doctor|start|validate` covers course navigation and public checks; `train progress init|status|check|submit|review|export` covers local learning records; `audit init|status|lint|gate|preflight|rebaseline|finding|evidence|verify|report` covers the real-project lifecycle; `export open-demo|verify` and `package blind|verify` cover local release artifacts; `view build|verify` covers the offline static projection.
+- `scripts/rcsl.py`: unified CLI. `train overview|doctor|start|validate` covers course navigation and public checks; `train progress init|status|check|submit|review|export` covers local learning records; `audit init|status|lint|gate|preflight|rebaseline|finding|evidence|verify|report` covers the real-project lifecycle; `export open-demo|verify` and `package blind|verify` cover local release artifacts.
 - `stewardship_lab/audit.py`: standard-library audit core for clean-Git binding, G0 gates, structured findings/evidence, allowed state transitions, baseline drift, local hash-chain verification, and report data/rendering.
 - `stewardship_lab/training.py`: standard-library training-progress core for external workspaces, structural worksheet checks, immutable attempt snapshots, named human reviews, retries, local consistency verification, and redacted exports.
 - `stewardship_lab/release.py`: standard-library release core for frozen-snapshot Open Demo export; exact root/payload and trusted verifier/boundary checks; source-tree/revision/worktree-state binding; strict no-float JSON and SemVer; and private three-package Blind staging with external private manifest/source prerequisites, executable-aware inventories, role-filtered licenses, build-record implementation digests, bounded leakage/path refusal, standalone capacity/traversal fail-closed behavior, and POSIX-mode checks.
-- `stewardship_lab/view.py`: standard-library Phase 4A core for reverified Open Demo registry data, optional Audit/Training evidence snapshots, escaped JavaScript-free HTML, fixed-root manifests/checksums, private local modes, and Blind-input refusal.
 - `stewardship_lab/__init__.py`: public package boundary for the stewardship cores.
-- `LLM4SBR_code_judgement_training/`: the earlier local algorithm-code judgement exercise.
 - `LLM4SBR_research_audit_training_v2/`: the four-level training package and its course hub.
   - `CASE_FILE.md` / `CASE_FILE_EN.md`: versioned scope, provenance, G0 boundary, Open Demo status, and review triggers for the current case.
   - `CAPSTONE_BRIEF.md`: public synthetic cross-layer incident brief; contains no evaluator mapping and requires human review.
@@ -38,7 +34,6 @@ Canonical mode entry points are `python scripts/rcsl.py train ...` and `python s
 - `tests/test_audit_lifecycle.py`: synthetic clean-Git lifecycle tests, including dirty-project refusal, G0/preflight, drift/rebaseline, findings/evidence/transitions, tamper detection, and reports.
 - `tests/test_training_progress.py`: external-workspace tests for initialization, structure-only checks, immutable retries, human-review consistency/disagreement, tamper and symlink refusal, offline resume, and redacted export.
 - `tests/test_release_packaging.py`: Open Demo and synthetic Blind-staging tests for frozen-snapshot validation, exact root/payload binding, trusted verifier/boundary replacement refusal, strict JSON/SemVer, external/private source-manifest prerequisites, executable-aware allowlists/root digests, role inventories/license filtering, build-record bindings, UTF-8 leakage and VCS/secret-path refusal, standalone capacity/unreadable/protected-path failure, POSIX private modes, tamper detection, fail-closed template placeholders, and non-overwriting race behavior.
-- `tests/test_static_view.py`: synthetic Phase 4A tests for deterministic offline output, strict input/output boundaries, sensitive modes, XSS escaping, exact-file verification, Blind refusal, and preservation of `not_assessed`/known limitations.
 - `docs/superpowers/specs/`: approved four-level design specification.
 - `docs/superpowers/plans/`: test-driven implementation plan.
 - `docs/implementation-audit/`: RED/GREEN evidence, review decisions, corrections, and task reports.
@@ -89,15 +84,8 @@ Case release
   role self-check  → each role runs only its own verify_package.py
                    → bounded capacity/traversal; no sibling package required
 
-Offline static projection (not a third mode)
-  view build       → at least one verified Open Demo + optional Audit/Training workspace
-                   → new external directory with static HTML/CSS + registry/evidence JSON
-                   → no JavaScript, outbound links, CDN, server, or network
-  view verify      → exact root/payload + manifest/checksums + static dependency/mode checks
-                   → Blind staging and role packages are never accepted as inputs
-
 Shared governance
-  docs/COMPETENCY_MODEL*.md + docs/CASE_RELEASE_MODEL*.md + docs/VIEW_MODE*.md
+  docs/COMPETENCY_MODEL*.md + docs/CASE_RELEASE_MODEL*.md
   skills/research-code-audit-training/
 ```
 
@@ -105,18 +93,19 @@ Mode Audit does **not execute target-project code, use the network, or modify th
 
 ## Current implementation status
 
+Status terms follow the [roadmap](docs/DUAL_MODE_ROADMAP_EN.md): `implemented` means the artifact exists, `internally verified` means controlled tests pass, `field validated` requires observed real use, and `production ready` additionally requires operational, security, recovery, and governance closure. The current core has not reached either of the last two states.
+
 - Level 1 algorithm semantics: implemented and reviewed.
 - Level 2 pipeline integrity: implemented and regression-tested.
 - Level 3 scientific validity: implemented as five structured, recomputable experiment dossiers with hidden scientific-policy probes.
 - Level 4 agent experiment governance: implemented as five closed approval/event/ledger/report timelines with hidden governance probes.
-- Explicit Mode Train namespace and compatibility aliases: implemented.
+- Explicit Mode Train namespace: implemented and internally verified; legacy aliases have been removed.
 - Mode Train progress lifecycle: implemented with an external resumable `progress.json`, separate structure/attempt/human-review states, immutable attempt snapshots, retry history, reviewer disagreement, explicit evidence gaps, a public synthetic capstone, and redacted Markdown/JSON export.
 - Capstone pass gate: implemented as a named human record; structural completeness cannot pass it, and the CLI does not generate a maturity or scientific verdict.
 - Real-project Mode Audit lifecycle: implemented for clean Git binding, draft/approved/blocked G0, status/lint/preflight, rebaseline, structured findings and evidence, constrained transitions, local integrity verification, and non-overwriting Markdown/JSON reports.
 - Phase 3A local release tooling: implemented for the current historically public LLM4SBR Open Demo and for runtime-generated synthetic, never-public three-package staging. Verification enforces exact roots/payloads and trusted generated boundaries; Blind manifests/sources stay outside the public repository, strict no-float JSON, canonical UTC RFC 3339 timestamps, strict SemVer, and placeholder rules fail closed. Build records bind tool-revision scope/worktree state and packager/verifier bytes; every normally assembled role passes its own sibling-independent standalone verifier, which bounds capacity and fails on traversal errors or protected paths. POSIX private modes are checked locally. Repository-side trust is version-coupled, so archived artifacts must retain and use their corresponding tool revision if trusted bytes change. These establish manifest/checksum/package contracts only; they do not establish ACLs or confidentiality.
-- Phase 3B controlled Blind operation: not complete. No current RCSL case is asserted to be an operational Blind Challenge; independent private placement, least privilege, access records, frozen scoring, independent evaluation, human leakage review, release sign-off, and a leakage drill remain external human gates.
-- Phase 4A offline static view: implemented as a disposable, rebuildable projection from at least one trusted-verified Open Demo plus optional local Audit/Training evidence. It emits a fixed offline HTML/CSS/JSON/checksum tree, escapes displayed content, preserves `not_assessed` and known limitations, refuses Blind inputs before payload reads, executes no package/project code, uses no network, and gives every view private POSIX modes. Audit/Training projections are explicitly locally sensitive. Verification is local snapshot consistency only—not scientific review, synchronization with later source changes, ACLs, confidentiality, or secure hosting.
-- Phase 4B dashboard, hosted registry, multi-user collaboration, and external integrations: not implemented. Phase 4A completion does not approve public deployment of a local view or complete Phase 4 overall.
+- Phase 3B controlled Blind operation: not implemented. No current RCSL case is asserted to be an operational Blind Challenge; independent private placement, least privilege, access records, frozen scoring, independent evaluation, human leakage review, release sign-off, and a leakage drill remain external human gates.
+- Phase 4 presentation/registry work: deferred and pruned from the active product after review. A historical prototype passed internal contract tests, but it had no field-validated demand and did not bind displayed cases to audit/training subjects strongly enough. Reconsider this layer only after the shared case identity model and real pilots are complete.
 
 All four levels have focused tests, isolated answer manifests, public checks, and external hidden verification.
 

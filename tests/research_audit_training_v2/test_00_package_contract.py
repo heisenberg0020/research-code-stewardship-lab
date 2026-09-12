@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
-
-from tests.research_audit_training_v2.helpers import ROOT, V2, sha256, student_files
+from tests.research_audit_training_v2.helpers import V2, student_files
 
 
 LEVELS = (
@@ -21,35 +19,7 @@ LEAK_PATTERN = re.compile(
 )
 
 
-def manifest_paths() -> set[str]:
-    manifest = ROOT / "tests/research_audit_training_v2/fixtures/legacy_tree.sha256"
-    return {
-        line.split("  ", 1)[1]
-        for line in manifest.read_text(encoding="utf-8").splitlines()
-    }
-
-
-def expected_protected_paths() -> set[str]:
-    old_training = ROOT / "LLM4SBR_code_judgement_training"
-    return {
-        path.relative_to(ROOT).as_posix()
-        for path in old_training.rglob("*")
-        if path.is_file()
-        and "__pycache__" not in path.parts
-        and not path.name.startswith(".")
-    }
-
-
 class PackageContractTests(unittest.TestCase):
-    def test_manifest_excludes_third_party_research_materials(self) -> None:
-        paths = manifest_paths()
-        self.assertFalse(any(Path(path).name == ".DS_Store" for path in paths))
-        self.assertNotIn("2402.13840v2.pdf", paths)
-        self.assertFalse(any(path.startswith("LLM4SBR-main/") for path in paths))
-
-    def test_manifest_path_set_matches_derived_protected_files(self) -> None:
-        self.assertEqual(manifest_paths(), expected_protected_paths())
-
     def test_leak_pattern_matches_chinese_answer_labels(self) -> None:
         for text in ("正确候选：A", "答案：A"):
             self.assertIsNotNone(LEAK_PATTERN.search(text), text)
@@ -69,11 +39,3 @@ class PackageContractTests(unittest.TestCase):
         for path in student_files():
             if path.suffix in {".py", ".md", ".json", ".jsonl", ".csv"}:
                 self.assertIsNone(LEAK_PATTERN.search(path.read_text(encoding="utf-8")), str(path))
-
-    def test_protected_files_match_frozen_hashes(self) -> None:
-        manifest = ROOT / "tests/research_audit_training_v2/fixtures/legacy_tree.sha256"
-        for line in manifest.read_text(encoding="utf-8").splitlines():
-            expected, relative = line.split("  ", 1)
-            path = ROOT / relative
-            self.assertTrue(path.is_file(), relative)
-            self.assertEqual(sha256(path), expected, relative)

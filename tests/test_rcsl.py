@@ -59,128 +59,37 @@ def run_module_cli(module, *arguments: str) -> tuple[int, str, str]:
 
 class RcslCommandTests(unittest.TestCase):
     def test_overview_orients_new_learners(self) -> None:
-        result = run_cli("overview")
+        result = run_cli("train", "overview")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Make runnable research code auditable", result.stdout)
         self.assertIn("start --level 1", result.stdout)
         self.assertIn("validate", result.stdout)
-        self.assertIn("init-audit", result.stdout)
 
     def test_doctor_reports_python_and_torch_status(self) -> None:
-        result = run_cli("doctor")
+        result = run_cli("train", "doctor")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Python:", result.stdout)
         self.assertIn("torch:", result.stdout)
 
     def test_start_only_lists_public_level_materials(self) -> None:
-        result = run_cli("start", "--level", "1")
+        result = run_cli("train", "start", "--level", "1")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Level 1: Algorithm semantics", result.stdout)
         self.assertIn("level_1_algorithm_semantics/PAPER_MAP.md", result.stdout)
         self.assertIn("run_smoke.py", result.stdout)
 
-    def test_legacy_install_skill_dry_run_still_works(self) -> None:
-        result = run_cli("install-skill", "--dry-run")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Dry run only", result.stdout)
-
-    def test_help_explains_old_and_new_commands(self) -> None:
+    def test_help_exposes_only_supported_command_families(self) -> None:
         result = run_cli("--help")
         self.assertEqual(result.returncode, 0, result.stderr)
-        for command in (
-            "overview",
-            "doctor",
-            "start",
-            "view",
-            "install-skill",
-            "init-audit",
-            "lint-audit",
-            "status-audit",
-        ):
+        for command in ("train", "audit", "export", "package"):
             self.assertIn(command, result.stdout)
-
-    def test_view_cli_maps_repeatable_open_demos_and_optional_evidence(self) -> None:
-        module = load_rcsl_module()
-        output = Path("/tmp/rcsl-static-view")
-        with mock.patch.object(
-            module.view_core, "build_static_view", return_value=output
-        ) as build:
-            returncode, stdout, stderr = run_module_cli(
-                module,
-                "view",
-                "build",
-                "--open-demo",
-                "/tmp/open-one",
-                "--open-demo",
-                "/tmp/open-two",
-                "--audit-workspace",
-                "/tmp/audit",
-                "--training-workspace",
-                "/tmp/training",
-                "--output",
-                str(output),
-            )
-
-        self.assertEqual(returncode, 0, stderr)
-        self.assertIn("Offline static view CREATED", stdout)
-        self.assertIn("local-sensitive-not-deployable", stdout)
-        build.assert_called_once_with(
-            [Path("/tmp/open-one"), Path("/tmp/open-two")],
-            output,
-            audit_workspace=Path("/tmp/audit"),
-            training_workspace=Path("/tmp/training"),
-        )
-
-    def test_view_verify_cli_preserves_separate_claims(self) -> None:
-        module = load_rcsl_module()
-        verification = {
-            "integrity_status": "pass",
-            "privacy_classification": "open-demo-only-offline",
-            "scientific_correctness": "not_assessed",
-        }
-        with mock.patch.object(
-            module.view_core, "verify_static_view", return_value=verification
-        ):
-            returncode, stdout, stderr = run_module_cli(
-                module, "view", "verify", "/tmp/view", "--json"
-            )
-
-        self.assertEqual(returncode, 0, stderr)
-        self.assertEqual(json.loads(stdout), verification)
+        for removed in ("view", "install-skill", "init-audit", "lint-audit", "status-audit"):
+            self.assertNotIn(removed, result.stdout)
 
     def test_invalid_level_is_rejected(self) -> None:
-        result = run_cli("start", "--level", "5")
+        result = run_cli("train", "start", "--level", "5")
         self.assertEqual(result.returncode, 2)
         self.assertIn("invalid choice", result.stderr)
-
-    def test_real_public_templates_create_a_local_workspace(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            workspace = Path(temporary) / "audit"
-            result = run_cli(
-                "init-audit",
-                "--level",
-                "2",
-                "--output",
-                str(workspace),
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("Created public audit workspace", result.stdout)
-            self.assertTrue((workspace / "research-contract-template.md").is_file())
-            metadata = json.loads((workspace / "audit-workspace.json").read_text(encoding="utf-8"))
-            self.assertEqual(metadata["level"], 2)
-            self.assertEqual(metadata["validator_scope"], "structural_only")
-
-            for filename in metadata["template_files"]:
-                path = workspace / filename
-                completed = re.sub(
-                    r"\{\{[^{}\n]+\}\}",
-                    "Documented evidence",
-                    path.read_text(encoding="utf-8"),
-                )
-                path.write_text(completed, encoding="utf-8")
-            lint_result = run_cli("lint-audit", str(workspace))
-            self.assertEqual(lint_result.returncode, 0, lint_result.stdout + lint_result.stderr)
-            self.assertIn("Structure status: COMPLETE", lint_result.stdout)
 
 
 class AuditWorkspaceTests(unittest.TestCase):
@@ -199,16 +108,12 @@ class AuditWorkspaceTests(unittest.TestCase):
 
     def initialize_workspace(self, name: str = "audit") -> Path:
         workspace = self.root / name
-        returncode, stdout, stderr = run_module_cli(
-            self.module,
-            "init-audit",
-            "--level",
-            "1",
-            "--output",
-            str(workspace),
-        )
-        self.assertEqual(returncode, 0, stderr)
-        self.assertIn("Created public audit workspace", stdout)
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            returncode = self.module.command_init_audit(1, workspace)
+        self.assertEqual(returncode, 0, stderr.getvalue())
+        self.assertEqual(stdout.getvalue(), "")
         return workspace
 
     def test_init_copies_only_expected_public_templates_and_metadata(self) -> None:
@@ -240,18 +145,14 @@ class AuditWorkspaceTests(unittest.TestCase):
         sentinel = workspace / "keep-me.txt"
         sentinel.write_text("unchanged", encoding="utf-8")
 
-        returncode, stdout, stderr = run_module_cli(
-            self.module,
-            "init-audit",
-            "--level",
-            "1",
-            "--output",
-            str(workspace),
-        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            returncode = self.module.command_init_audit(1, workspace)
 
         self.assertEqual(returncode, 1)
-        self.assertEqual(stdout, "")
-        self.assertIn("Refusing to overwrite", stderr)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("Refusing to overwrite", stderr.getvalue())
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "unchanged")
 
     def test_init_directory_swap_cannot_overwrite_redirect_target(self) -> None:
@@ -288,33 +189,29 @@ class AuditWorkspaceTests(unittest.TestCase):
             return result
 
         with mock.patch.object(self.module.os, "mkdir", side_effect=swap_after_create):
-            returncode, stdout, stderr = run_module_cli(
-                self.module,
-                "init-audit",
-                "--level",
-                "1",
-                "--output",
-                str(workspace),
-            )
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                returncode = self.module.command_init_audit(1, workspace)
 
         self.assertTrue(swapped)
         self.assertEqual(returncode, 1)
-        self.assertEqual(stdout, "")
-        self.assertIn("No existing file was overwritten", stderr)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("No existing file was overwritten", stderr.getvalue())
         for filename, expected in sentinels.items():
             self.assertEqual((redirect_target / filename).read_bytes(), expected)
 
     def test_incomplete_workspace_fails_lint_but_status_reports_progress(self) -> None:
         workspace = self.initialize_workspace()
 
-        returncode, stdout, stderr = run_module_cli(self.module, "lint-audit", str(workspace))
-        self.assertEqual(returncode, 1, stderr)
-        self.assertIn("Structure status: INCOMPLETE", stdout)
-        self.assertIn("unresolved template placeholders", stdout)
-
-        returncode, stdout, stderr = run_module_cli(self.module, "status-audit", str(workspace))
-        self.assertEqual(returncode, 0, stderr)
-        self.assertIn("Template progress: 0/4", stdout)
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            returncode = self.module.command_lint_audit(workspace)
+        self.assertEqual(returncode, 1)
+        self.assertIn("Structure status: INCOMPLETE", stdout.getvalue())
+        self.assertIn("unresolved template placeholders", stdout.getvalue())
+        inspection = self.module.inspect_audit_workspace(workspace)
+        self.assertEqual(inspection.completed_template_count, 0)
 
     def test_workspace_metadata_requires_exact_integer_schema_and_level(self) -> None:
         for field, value, message in (
@@ -353,25 +250,23 @@ class AuditWorkspaceTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        returncode, stdout, stderr = run_module_cli(self.module, "lint-audit", str(workspace))
-        self.assertEqual(returncode, 0, stderr)
-        self.assertIn("Template progress: 4/4", stdout)
-        self.assertIn("Structure status: COMPLETE", stdout)
-        self.assertIn("does not judge research or scientific correctness", stdout)
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            returncode = self.module.command_lint_audit(workspace)
+        self.assertEqual(returncode, 0)
+        self.assertIn("Template progress: 4/4", stdout.getvalue())
+        self.assertIn("Structure status: COMPLETE", stdout.getvalue())
+        self.assertIn("does not judge research or scientific correctness", stdout.getvalue())
 
     def test_isolated_path_is_refused_before_workspace_creation(self) -> None:
         workspace = self.root / self.module.ISOLATED_DIRECTORY_NAME / "audit"
-        returncode, stdout, stderr = run_module_cli(
-            self.module,
-            "init-audit",
-            "--level",
-            "1",
-            "--output",
-            str(workspace),
-        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            returncode = self.module.command_init_audit(1, workspace)
         self.assertEqual(returncode, 2)
-        self.assertEqual(stdout, "")
-        self.assertIn("isolated instructor-material path", stderr)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("isolated instructor-material path", stderr.getvalue())
         self.assertFalse(workspace.exists())
 
     def test_path_resolving_into_isolated_material_is_refused(self) -> None:
@@ -384,17 +279,13 @@ class AuditWorkspaceTests(unittest.TestCase):
             self.skipTest(f"directory symlinks unavailable: {error}")
 
         workspace = alias / "audit"
-        returncode, stdout, stderr = run_module_cli(
-            self.module,
-            "init-audit",
-            "--level",
-            "1",
-            "--output",
-            str(workspace),
-        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            returncode = self.module.command_init_audit(1, workspace)
         self.assertEqual(returncode, 2)
-        self.assertEqual(stdout, "")
-        self.assertIn("resolves into isolated instructor material", stderr)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("resolves into isolated instructor material", stderr.getvalue())
         self.assertFalse(workspace.exists())
 
 
@@ -629,9 +520,9 @@ class DualModeCliTests(unittest.TestCase):
         self.assertEqual(status_payload["assessment_status"], "review-ready")
         self.assertEqual(status_payload["summary"]["finding_count"], 1)
 
-        legacy_lint = run_cli("lint-audit", str(self.workspace))
-        self.assertEqual(legacy_lint.returncode, 0, legacy_lint.stdout + legacy_lint.stderr)
-        self.assertIn("Structure status: COMPLETE", legacy_lint.stdout)
+        lint = run_cli("audit", "lint", str(self.workspace))
+        self.assertEqual(lint.returncode, 0, lint.stdout + lint.stderr)
+        self.assertIn("Structure status: COMPLETE", lint.stdout)
         self.assertEqual(self._git("rev-parse", "HEAD"), original_head)
         self.assertEqual(self._git("status", "--porcelain"), original_status)
         self.assertEqual((self.project / "README.md").read_bytes(), original_readme)

@@ -24,7 +24,6 @@ if str(REPOSITORY_ROOT) not in sys.path:
 from stewardship_lab import audit as audit_core
 from stewardship_lab import release as release_core
 from stewardship_lab import training as training_core
-from stewardship_lab import view as view_core
 
 
 TRAINING_ROOT = REPOSITORY_ROOT / "LLM4SBR_research_audit_training_v2"
@@ -224,9 +223,7 @@ def workspace_metadata(
     }
 
 
-def command_init_audit(
-    level_number: int, output: Path | str, *, announce: bool = True
-) -> int:
+def command_init_audit(level_number: int, output: Path | str) -> int:
     """Create a new local workspace from public templates without overwriting anything."""
 
     workspace = validate_workspace_path(output, action="create")
@@ -306,12 +303,6 @@ def command_init_audit(
         return 1
     release_core._close_owned_output(owned)
 
-    if announce:
-        print(f"Created public audit workspace: {workspace}")
-        print(f"Level {level_number}: {LEVELS[level_number].title}")
-        print("Next: replace every double-braced prompt in the four Markdown files.")
-        print(f"Progress: python scripts/rcsl.py status-audit {workspace}")
-        print(f"Final structure check: python scripts/rcsl.py lint-audit {workspace}")
     return 0
 
 
@@ -481,16 +472,6 @@ def command_lint_audit(workspace_path: Path | str) -> int:
     return 0 if inspection.is_complete else 1
 
 
-def command_status_audit(workspace_path: Path | str) -> int:
-    """Show local audit-workspace progress without treating incompleteness as an error."""
-
-    inspection = inspect_audit_workspace(workspace_path)
-    if inspection is None:
-        return 2
-    print_workspace_inspection(inspection)
-    return 0
-
-
 def command_overview() -> int:
     print("Research Code Stewardship Lab")
     print("Make runnable research code auditable before you trust its claims.")
@@ -502,11 +483,6 @@ def command_overview() -> int:
     print("                                             Keep resumable attempts and human reviews")
     print("  python scripts/rcsl.py train validate    Run learner-visible public checks")
     print("  python scripts/rcsl.py audit --help      Audit a real, clean Git project")
-    print("  python scripts/rcsl.py install-skill --dry-run")
-    print("                                             Preview the optional Codex skill setup")
-    print()
-    print("Compatibility aliases remain available: overview, doctor, start, validate,")
-    print("init-audit, lint-audit, and status-audit.")
     print()
     print("Levels: 1 Algorithm semantics · 2 Pipeline integrity ·")
     print("        3 Scientific validity · 4 Agent experiment governance · cross-layer Capstone")
@@ -568,15 +544,6 @@ def command_validate() -> int:
     return result.returncode
 
 
-def command_install_skill() -> int:
-    destination = "~/.codex/skills/research-code-audit-training"
-    print("Dry run only — no files changed.")
-    print(f"Source: {relative(SKILL_SOURCE)}")
-    print(f"Destination: {destination}")
-    print("To install manually, copy the source directory to the destination's parent directory.")
-    return 0
-
-
 AUDIT_OUTPUT_LIMITATIONS = (
     "This checks local records and declared human decisions only; it is not a scientific verdict.",
     "Actor and reviewer names are labels, not authenticated identities or signatures.",
@@ -621,7 +588,7 @@ def command_audit_init(
     ):
         print("Audit workspace must be outside the bound Git project.", file=sys.stderr)
         return 1
-    created = command_init_audit(level_number, workspace, announce=False)
+    created = command_init_audit(level_number, workspace)
     if created:
         return created
     try:
@@ -998,7 +965,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "RCSL has two human workflows: train is an audit curriculum "
             "(it never trains a model), while audit manages evidence for a real Git "
-            "project. Release and view commands package or display their records."
+            "project. Release commands create explicitly bounded case artifacts."
         )
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -1163,46 +1130,6 @@ def build_parser() -> argparse.ArgumentParser:
     package_verify.add_argument("staging", type=Path)
     package_verify.add_argument("--json", action="store_true")
 
-    view_parser = subcommands.add_parser(
-        "view",
-        help="Build or verify a replaceable, fully offline static view.",
-        description=(
-            "Render verified Open Demo metadata and optional local Audit/Train "
-            "evidence into a no-JavaScript static snapshot. Blind package inputs "
-            "are refused."
-        ),
-    )
-    view_commands = view_parser.add_subparsers(dest="view_command", required=True)
-    view_build = view_commands.add_parser(
-        "build",
-        help="Create a new offline static view outside this repository.",
-    )
-    view_build.add_argument(
-        "--open-demo",
-        dest="open_demos",
-        action="append",
-        type=Path,
-        required=True,
-        help="Verified Open Demo bundle; repeat to register more than one case.",
-    )
-    view_build.add_argument("--output", type=Path, required=True)
-    view_build.add_argument(
-        "--audit-workspace",
-        type=Path,
-        help="Optional local Audit workspace; makes the view local-sensitive.",
-    )
-    view_build.add_argument(
-        "--training-workspace",
-        type=Path,
-        help="Optional Training workspace, consumed through its redacted projection.",
-    )
-    view_verify = view_commands.add_parser(
-        "verify",
-        help="Verify the exact static-view root and retained byte inventory.",
-    )
-    view_verify.add_argument("view", type=Path)
-    view_verify.add_argument("--json", action="store_true")
-
     audit_parser = subcommands.add_parser(
         "audit",
         help=(
@@ -1333,55 +1260,6 @@ def build_parser() -> argparse.ArgumentParser:
     report_build.add_argument("--output", type=Path, required=True)
     report_build.add_argument("--format", choices=("markdown", "json"), default="markdown")
 
-    subcommands.add_parser("overview", help="Show the available learner routes.")
-    subcommands.add_parser("doctor", help="Show Python and torch availability.")
-    subcommands.add_parser("validate", help="Run all public regression checks.")
-
-    start_parser = subcommands.add_parser("start", help="Show public materials for one level.")
-    start_parser.add_argument(
-        "--level",
-        type=int,
-        choices=tuple(LEVELS),
-        required=True,
-        help="Training level to begin (1 through 4).",
-    )
-
-    init_audit_parser = subcommands.add_parser(
-        "init-audit", help="Create a non-overwriting local audit workspace from public templates."
-    )
-    init_audit_parser.add_argument(
-        "--level",
-        type=int,
-        choices=tuple(LEVELS),
-        required=True,
-        help="Course level this audit workspace supports (1 through 4).",
-    )
-    init_audit_parser.add_argument(
-        "--output",
-        type=Path,
-        required=True,
-        help="New local directory to create. It must not already exist.",
-    )
-
-    lint_audit_parser = subcommands.add_parser(
-        "lint-audit", help="Check a local audit workspace for structural completeness."
-    )
-    lint_audit_parser.add_argument("workspace", type=Path, help="Audit workspace directory to inspect.")
-
-    status_audit_parser = subcommands.add_parser(
-        "status-audit", help="Show structural progress for a local audit workspace."
-    )
-    status_audit_parser.add_argument("workspace", type=Path, help="Audit workspace directory to inspect.")
-
-    install_parser = subcommands.add_parser(
-        "install-skill", help="Preview installation of the optional Codex skill."
-    )
-    install_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        required=True,
-        help="Preview only; this command never changes files.",
-    )
     return parser
 
 
@@ -1562,35 +1440,6 @@ def _dispatch_release(args: argparse.Namespace) -> int:
     raise AssertionError(f"Unhandled release command: {args.command}")
 
 
-def _dispatch_view(args: argparse.Namespace) -> int:
-    if args.view_command == "build":
-        output = view_core.build_static_view(
-            args.open_demos,
-            args.output,
-            audit_workspace=args.audit_workspace,
-            training_workspace=args.training_workspace,
-        )
-        print(f"Offline static view CREATED: {output}")
-        if args.audit_workspace is not None or args.training_workspace is not None:
-            print(
-                f"Privacy: {view_core.LOCAL_PRIVACY_CLASSIFICATION} · DO NOT DEPLOY"
-            )
-        else:
-            print(f"Privacy: {view_core.OPEN_PRIVACY_CLASSIFICATION}")
-        print("The view is read-only and makes no scientific or maturity verdict.")
-        return 0
-    if args.view_command == "verify":
-        result = view_core.verify_static_view(args.view)
-        if args.json:
-            print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
-        else:
-            print(f"Static view integrity: {result['integrity_status'].upper()}")
-            print(f"Privacy classification: {result['privacy_classification']}")
-            print("Scientific correctness: NOT ASSESSED")
-        return 0
-    raise AssertionError(f"Unhandled view command: {args.view_command}")
-
-
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -1600,8 +1449,6 @@ def main(argv: list[str] | None = None) -> int:
             return _dispatch_audit(args)
         if args.command in {"export", "package"}:
             return _dispatch_release(args)
-        if args.command == "view":
-            return _dispatch_view(args)
     except training_core.TrainingError as error:
         print(f"Training operation refused: {error}", file=sys.stderr)
         return 1
@@ -1611,28 +1458,9 @@ def main(argv: list[str] | None = None) -> int:
     except release_core.ReleaseError as error:
         print(f"Release operation refused: {error}", file=sys.stderr)
         return 1
-    except view_core.ViewError as error:
-        print(f"View operation refused: {error}", file=sys.stderr)
-        return 1
     except OSError as error:
         print(f"Local operation failed: {error}", file=sys.stderr)
         return 2
-    if args.command == "overview":
-        return command_overview()
-    if args.command == "doctor":
-        return command_doctor()
-    if args.command == "start":
-        return command_start(args.level)
-    if args.command == "init-audit":
-        return command_init_audit(args.level, args.output)
-    if args.command == "lint-audit":
-        return command_lint_audit(args.workspace)
-    if args.command == "status-audit":
-        return command_status_audit(args.workspace)
-    if args.command == "validate":
-        return command_validate()
-    if args.command == "install-skill":
-        return command_install_skill()
     raise AssertionError(f"Unhandled command: {args.command}")
 
 
