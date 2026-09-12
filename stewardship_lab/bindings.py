@@ -22,13 +22,35 @@ SUBJECT_KINDS = ("git-project", "training-case")
 SOURCE_REVISION_SCHEMES = ("git-sha1", "git-sha256")
 RECORD_TYPES = ("attempt", "evidence", "finding", "review")
 MAX_JSON_NESTING = 100
-MAX_ARTIFACTS = 100_000
+MAX_JSON_NODES = 100_000
+MAX_JSON_STRING_BYTES = 1_000_000
+MAX_CANONICAL_JSON_BYTES = 16_000_000
+MAX_ARTIFACT_PATH_BYTES = 4_096
+MAX_ARTIFACT_PATH_PART_BYTES = 255
+MAX_ARTIFACTS = 10_000
+MIN_JSON_INTEGER = -(2**63)
+MAX_JSON_INTEGER = 2**63 - 1
+RECORD_BINDING_DOMAIN = "rcsl-record-binding"
+RECORD_BINDING_SCHEMA_VERSION = 1
 
 _ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}\Z")
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 _GIT_SHA1_PATTERN = re.compile(r"[0-9a-f]{40}\Z")
 _GIT_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
-_WINDOWS_DRIVE_PATTERN = re.compile(r"[A-Za-z]:\Z")
+_WINDOWS_FORBIDDEN_CHARACTERS = frozenset('<>:"|?*')
+_WINDOWS_RESERVED_STEMS = frozenset(
+    {
+        "aux",
+        "clock$",
+        "con",
+        "conin$",
+        "conout$",
+        "nul",
+        "prn",
+        *(f"com{suffix}" for suffix in "123456789¹²³"),
+        *(f"lpt{suffix}" for suffix in "123456789¹²³"),
+    }
+)
 
 
 class BindingError(ValueError):
@@ -114,15 +136,38 @@ def _require_canonical_string(value: object, *, field: str) -> str:
         raise BindingError(f"{field} must be a string")
     if unicodedata.normalize("NFC", value) != value:
         raise BindingError(f"{field} must use NFC Unicode normalization")
+    if any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+        raise BindingError(f"{field} must contain Unicode scalar values")
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeError as error:
+        raise BindingError(f"{field} must be valid UTF-8 text") from error
+    if len(encoded) > MAX_JSON_STRING_BYTES:
+        raise BindingError(
+            f"{field} exceeds the {MAX_JSON_STRING_BYTES}-byte string limit"
+        )
     return value
 
 
-def _validate_json_value(value: object, *, field: str, depth: int = 0) -> None:
+def _consume_json_node(state: list[int], *, field: str) -> None:
+    state[0] += 1
+    if state[0] > MAX_JSON_NODES:
+        raise BindingError(f"{field} exceeds the {MAX_JSON_NODES}-node JSON limit")
+
+
+def _validate_json_value(
+    value: object, *, field: str, depth: int = 0, state: list[int] | None = None
+) -> None:
+    if state is None:
+        state = [0]
+    _consume_json_node(state, field=field)
     if depth > MAX_JSON_NESTING:
         raise BindingError(f"{field} exceeds the JSON nesting limit")
     if value is None or isinstance(value, bool):
         return
     if isinstance(value, int):
+        if value < MIN_JSON_INTEGER or value > MAX_JSON_INTEGER:
+            raise BindingError(f"{field} integer must fit in signed 64 bits")
         return
     if isinstance(value, float):
         raise BindingError(f"{field} must not contain floating-point numbers")
@@ -131,13 +176,22 @@ def _validate_json_value(value: object, *, field: str, depth: int = 0) -> None:
         return
     if isinstance(value, list):
         for index, item in enumerate(value):
-            _validate_json_value(item, field=f"{field}[{index}]", depth=depth + 1)
+            _validate_json_value(
+                item,
+                field=f"{field}[{index}]",
+                depth=depth + 1,
+                state=state,
+            )
         return
     if isinstance(value, dict):
-        for key, item in value.items():
-            canonical_key = _require_canonical_string(key, field=f"{field} key")
+        for index, (key, item) in enumerate(value.items()):
+            _consume_json_node(state, field=f"{field} key")
+            _require_canonical_string(key, field=f"{field} key")
             _validate_json_value(
-                item, field=f"{field}.{canonical_key}", depth=depth + 1
+                item,
+                field=f"{field}[{index}]",
+                depth=depth + 1,
+                state=state,
             )
         return
     raise BindingError(f"{field} contains a non-JSON value: {type(value).__name__}")
@@ -150,14 +204,28 @@ def canonical_json_bytes(value: object) -> bytes:
     as NaN, infinity, and negative zero cannot enter an identity digest.
     """
 
-    _validate_json_value(value, field="value")
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
+    try:
+        _validate_json_value(value, field="value")
+        encoder = json.JSONEncoder(
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        output = bytearray()
+        for chunk in encoder.iterencode(value):
+            encoded = chunk.encode("utf-8")
+            if len(output) + len(encoded) > MAX_CANONICAL_JSON_BYTES:
+                raise BindingError(
+                    "canonical JSON exceeds the "
+                    f"{MAX_CANONICAL_JSON_BYTES}-byte limit"
+                )
+            output.extend(encoded)
+        return bytes(output)
+    except BindingError:
+        raise
+    except (RecursionError, RuntimeError, TypeError, UnicodeError, ValueError) as error:
+        raise BindingError(f"value cannot be encoded as canonical JSON: {error}") from error
 
 
 def sha256_json(value: object) -> str:
@@ -168,19 +236,44 @@ def sha256_json(value: object) -> str:
 
 def _validate_artifact_path(value: object) -> str:
     path = _require_canonical_string(value, field="artifact path")
-    if not path or "\\" in path or any(ord(character) < 32 for character in path):
+    if len(path.encode("utf-8")) > MAX_ARTIFACT_PATH_BYTES:
+        raise BindingError(
+            f"artifact path exceeds the {MAX_ARTIFACT_PATH_BYTES}-byte limit"
+        )
+    if (
+        not path
+        or "\\" in path
+        or any(character in _WINDOWS_FORBIDDEN_CHARACTERS for character in path)
+        or any(unicodedata.category(character) in {"Cc", "Cs"} for character in path)
+    ):
         raise BindingError("artifact path must be a non-empty canonical POSIX path")
     parsed = PurePosixPath(path)
     if not parsed.parts or parsed.is_absolute() or str(parsed) != path:
         raise BindingError("artifact path must be a canonical relative POSIX path")
     if any(part in ("", ".", "..") for part in parsed.parts):
         raise BindingError("artifact path must not contain empty, dot, or parent parts")
-    if parsed.parts and _WINDOWS_DRIVE_PATTERN.fullmatch(parsed.parts[0]):
-        raise BindingError("artifact path must not contain a Windows drive prefix")
+    for part in parsed.parts:
+        if len(part.encode("utf-8")) > MAX_ARTIFACT_PATH_PART_BYTES:
+            raise BindingError(
+                "artifact path part exceeds the "
+                f"{MAX_ARTIFACT_PATH_PART_BYTES}-byte limit"
+            )
+        if part.endswith((".", " ")):
+            raise BindingError("artifact path parts must not end with a dot or space")
+        windows_stem = part.split(".", 1)[0].rstrip(" ").casefold()
+        if windows_stem in _WINDOWS_RESERVED_STEMS:
+            raise BindingError("artifact path must not use a Windows reserved device name")
     isolated = ISOLATED_DIRECTORY_NAME.casefold()
     if any(part.casefold() == isolated for part in parsed.parts):
         raise BindingError("artifact path must not reference isolated material")
     return path
+
+
+def _artifact_path_collision_key(path: str) -> str:
+    return "/".join(
+        unicodedata.normalize("NFC", part.casefold())
+        for part in PurePosixPath(path).parts
+    )
 
 
 def subject_ref(subject_id: str, kind: str) -> SubjectRef:
@@ -218,8 +311,13 @@ def validate_artifact_ref(value: object) -> ArtifactRef:
         value, {"path", "sha256", "size", "executable"}, field="artifact ref"
     )
     size = record["size"]
-    if isinstance(size, bool) or not isinstance(size, int) or size < 0:
-        raise BindingError("artifact size must be a non-negative integer")
+    if (
+        isinstance(size, bool)
+        or not isinstance(size, int)
+        or size < 0
+        or size > MAX_JSON_INTEGER
+    ):
+        raise BindingError("artifact size must be an integer from 0 through 2^63 - 1")
     executable = record["executable"]
     if not isinstance(executable, bool):
         raise BindingError("artifact executable must be a boolean")
@@ -277,10 +375,10 @@ def build_case_manifest(
     normalized_artifacts.sort(key=lambda item: item["path"])
     seen: set[str] = set()
     for item in normalized_artifacts:
-        folded = item["path"].casefold()
-        if folded in seen:
+        collision_key = _artifact_path_collision_key(item["path"])
+        if collision_key in seen:
             raise BindingError("case manifest contains colliding artifact paths")
-        seen.add(folded)
+        seen.add(collision_key)
     revision = (
         None
         if source_revision_value is None
@@ -360,10 +458,41 @@ def validate_case_ref(value: object) -> CaseRef:
     }
 
 
-def record_sha256(record: object) -> str:
-    """Return a digest for a caller-owned evidence, attempt, finding, or review."""
+def _require_record_type(value: object) -> str:
+    if value not in RECORD_TYPES:
+        raise BindingError(f"record type must be one of: {', '.join(RECORD_TYPES)}")
+    return cast(str, value)
 
-    return sha256_json(record)
+
+def _record_binding_envelope(
+    record_type: object,
+    record_id: object,
+    record: object,
+    case: object,
+) -> dict[str, object]:
+    normalized_type = _require_record_type(record_type)
+    normalized_id = _require_id(record_id, field="record id")
+    normalized_case = validate_case_ref(case)
+    if not isinstance(record, dict):
+        raise BindingError("record must be an object")
+    if "id" not in record:
+        raise BindingError("record must contain id")
+    internal_id = _require_id(record["id"], field="record.id")
+    if internal_id != normalized_id:
+        raise BindingError("record.id must match record id")
+    if "case_ref" not in record:
+        raise BindingError("record must contain case_ref")
+    internal_case = validate_case_ref(record["case_ref"])
+    if internal_case != normalized_case:
+        raise BindingError("record.case_ref must match case ref")
+    return {
+        "schema_version": RECORD_BINDING_SCHEMA_VERSION,
+        "domain": RECORD_BINDING_DOMAIN,
+        "record_type": normalized_type,
+        "record_id": normalized_id,
+        "case_sha256": normalized_case["case_sha256"],
+        "record": record,
+    }
 
 
 def record_ref(
@@ -372,30 +501,27 @@ def record_ref(
     record: object,
     case: Mapping[str, object],
 ) -> RecordRef:
-    """Bind one immutable caller-owned record to an exact case digest."""
+    """Bind one canonical object record to its declared ID and exact case."""
 
-    normalized_case = validate_case_ref(case)
-    return validate_record_ref(
-        {
-            "record_type": record_type,
-            "record_id": record_id,
-            "record_sha256": record_sha256(record),
-            "case_sha256": normalized_case["case_sha256"],
-        }
-    )
+    envelope = _record_binding_envelope(record_type, record_id, record, case)
+    return {
+        "record_type": cast(str, envelope["record_type"]),
+        "record_id": cast(str, envelope["record_id"]),
+        "record_sha256": sha256_json(envelope),
+        "case_sha256": cast(str, envelope["case_sha256"]),
+    }
 
 
 def validate_record_ref(value: object) -> RecordRef:
+    """Validate the shape of a reference without claiming its record is present."""
+
     record = _require_exact_keys(
         value,
         {"record_type", "record_id", "record_sha256", "case_sha256"},
         field="record ref",
     )
-    record_type_value = record["record_type"]
-    if record_type_value not in RECORD_TYPES:
-        raise BindingError(f"record type must be one of: {', '.join(RECORD_TYPES)}")
     return {
-        "record_type": cast(str, record_type_value),
+        "record_type": _require_record_type(record["record_type"]),
         "record_id": _require_id(record["record_id"], field="record id"),
         "record_sha256": _require_sha256(
             record["record_sha256"], field="record sha256"
@@ -404,6 +530,26 @@ def validate_record_ref(value: object) -> RecordRef:
             record["case_sha256"], field="case sha256"
         ),
     }
+
+
+def verify_record_ref(
+    value: object, record: object, case: Mapping[str, object]
+) -> RecordRef:
+    """Verify a reference against the exact canonical record and case it names."""
+
+    reference = validate_record_ref(value)
+    normalized_case = validate_case_ref(case)
+    if reference["case_sha256"] != normalized_case["case_sha256"]:
+        raise BindingError("record ref case sha256 does not match case ref")
+    expected = record_ref(
+        reference["record_type"],
+        reference["record_id"],
+        record,
+        normalized_case,
+    )
+    if expected != reference:
+        raise BindingError("record ref digest does not match record binding")
+    return reference
 
 
 __all__ = (
@@ -420,7 +566,6 @@ __all__ = (
     "case_ref",
     "case_sha256",
     "record_ref",
-    "record_sha256",
     "sha256_json",
     "source_revision",
     "subject_ref",
@@ -430,4 +575,5 @@ __all__ = (
     "validate_record_ref",
     "validate_source_revision",
     "validate_subject_ref",
+    "verify_record_ref",
 )
