@@ -32,7 +32,7 @@ def candidate_container(level: Path) -> Path | None:
     return None
 
 
-def validate(root: Path) -> list[str]:
+def validate(root: Path, *, public_export: bool = False) -> list[str]:
     errors: list[str] = []
     if not root.is_dir():
         return [f"not a directory: {root}"]
@@ -53,7 +53,10 @@ def validate(root: Path) -> list[str]:
         if not level.is_dir():
             errors.append(f"missing level: {level_name}")
             continue
-        for name in ("README.md", "ANSWER_SHEET.md", "DO_NOT_OPEN_UNTIL_FINISHED"):
+        required_level_entries = ["README.md", "ANSWER_SHEET.md"]
+        if not public_export:
+            required_level_entries.append("DO_NOT_OPEN_UNTIL_FINISHED")
+        for name in required_level_entries:
             if not (level / name).exists():
                 errors.append(f"{level_name}: missing {name}")
         container = candidate_container(level)
@@ -66,7 +69,9 @@ def validate(root: Path) -> list[str]:
                 errors.append(f"{level_name}: missing candidate labels {sorted(missing)}")
 
         hidden = level / "DO_NOT_OPEN_UNTIL_FINISHED"
-        if hidden.is_dir() and not (hidden / "answer_manifest.json").is_file():
+        if public_export and hidden.exists():
+            errors.append(f"{level_name}: public export retains instructor material")
+        elif hidden.is_dir() and not (hidden / "answer_manifest.json").is_file():
             errors.append(f"{level_name}: missing isolated answer_manifest.json")
 
     for path in root.rglob("*"):
@@ -91,9 +96,14 @@ def validate(root: Path) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--public-export",
+        action="store_true",
+        help="Validate an exported learner surface where instructor directories must be absent.",
+    )
     parser.add_argument("package", type=Path)
     args = parser.parse_args()
-    errors = validate(args.package.resolve())
+    errors = validate(args.package.resolve(), public_export=args.public_export)
     if errors:
         for error in errors:
             print(f"FAIL: {error}")

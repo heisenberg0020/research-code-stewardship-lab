@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from stewardship_lab import audit as audit_core
+from stewardship_lab import release as release_core
 from stewardship_lab import training as training_core
 
 
@@ -229,24 +231,38 @@ def command_init_audit(
     workspace = validate_workspace_path(output, action="create")
     if workspace is None:
         return 2
-    if workspace.is_symlink() or workspace.exists():
+    try:
+        parent = workspace.parent.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        print(
+            f"Audit workspace parent must already exist and be accessible: {error}",
+            file=sys.stderr,
+        )
+        return 1
+    if not parent.is_dir():
+        print("Audit workspace parent must be a directory.", file=sys.stderr)
+        return 1
+    workspace = parent / workspace.name
+    if path_is_isolated(workspace):
+        print(
+            "Refusing to create a workspace inside isolated instructor material.",
+            file=sys.stderr,
+        )
+        return 2
+    if os.path.lexists(workspace):
         print(f"Refusing to overwrite existing path: {workspace}", file=sys.stderr)
         return 1
 
     sources = required_template_sources()
-    missing = [source for _, source in sources if source.is_symlink() or not source.is_file()]
-    if missing:
-        print("Required public workspace templates are unavailable:", file=sys.stderr)
-        for source in missing:
-            print(f"  - {relative(source)}", file=sys.stderr)
-        print("No workspace was created.", file=sys.stderr)
-        return 1
-
     source_contents: dict[str, str] = {}
     try:
         for name, source in sources:
-            source_contents[name] = source.read_text(encoding="utf-8")
-    except OSError as error:
+            source_contents[name] = release_core._read_regular_path(
+                source,
+                label=f"public workspace template {name}",
+                maximum_bytes=release_core.MAX_MANIFEST_BYTES,
+            ).decode("utf-8")
+    except (OSError, UnicodeDecodeError, release_core.ReleaseError) as error:
         print(f"Could not read a public workspace template: {error}", file=sys.stderr)
         print("No workspace was created.", file=sys.stderr)
         return 1
@@ -256,23 +272,38 @@ def command_init_audit(
         name: hashlib.sha256(content.encode("utf-8")).hexdigest()
         for name, content in source_contents.items()
     }
-    try:
-        workspace.mkdir(parents=True, exist_ok=False)
-        for name, _ in sources:
-            (workspace / name).write_text(source_contents[name], encoding="utf-8")
-        (workspace / WORKSPACE_METADATA_NAME).write_text(
-            json.dumps(
-                workspace_metadata(level_number, structures, source_hashes),
-                indent=2,
-                ensure_ascii=False,
-            )
-            + "\n",
-            encoding="utf-8",
+    metadata_bytes = (
+        json.dumps(
+            workspace_metadata(level_number, structures, source_hashes),
+            indent=2,
+            ensure_ascii=False,
         )
-    except OSError as error:
+        + "\n"
+    ).encode("utf-8")
+    owned: release_core.OwnedOutput | None = None
+    try:
+        owned = release_core._create_owned_output(workspace)
+        for name, _ in sources:
+            release_core._write_file_at(
+                owned.descriptor,
+                name,
+                source_contents[name].encode("utf-8"),
+            )
+        release_core._write_file_at(
+            owned.descriptor,
+            WORKSPACE_METADATA_NAME,
+            metadata_bytes,
+        )
+        os.fsync(owned.descriptor)
+        release_core._assert_owned_output_identity(owned)
+    except (OSError, release_core.ReleaseError) as error:
+        if owned is not None:
+            release_core._cleanup_owned_output(owned)
+            release_core._close_owned_output(owned)
         print(f"Could not finish creating audit workspace: {error}", file=sys.stderr)
-        print(f"Any newly created files remain at: {workspace}", file=sys.stderr)
+        print("No existing file was overwritten.", file=sys.stderr)
         return 1
+    release_core._close_owned_output(owned)
 
     if announce:
         print(f"Created public audit workspace: {workspace}")
@@ -342,10 +373,12 @@ def inspect_audit_workspace(value: Path | str) -> WorkspaceInspection | None:
             general_issues.append("metadata workspace_type is not recognized")
         if metadata.get("validator_scope") != "structural_only":
             general_issues.append("metadata validator_scope is not structural_only")
-        if metadata.get("schema_version") not in (1, audit_core.SCHEMA_VERSION):
+        if type(metadata.get("schema_version")) is not int or metadata.get(
+            "schema_version"
+        ) not in (1, audit_core.SCHEMA_VERSION):
             general_issues.append("metadata schema_version is not supported")
         metadata_level = metadata.get("level")
-        if not isinstance(metadata_level, int) or metadata_level not in LEVELS:
+        if type(metadata_level) is not int or metadata_level not in LEVELS:
             general_issues.append("metadata level is not a supported course level")
         if metadata.get("template_files") != list(WORKSPACE_TEMPLATE_FILENAMES):
             general_issues.append("metadata template_files does not match the public workspace contract")
@@ -421,7 +454,7 @@ def print_workspace_inspection(inspection: WorkspaceInspection) -> None:
     if inspection.metadata is not None:
         level = inspection.metadata.get("level")
         title = inspection.metadata.get("level_title")
-        if isinstance(level, int) and isinstance(title, str):
+        if type(level) is int and isinstance(title, str):
             print(f"Course level: {level} · {title}")
     print(f"Template progress: {inspection.completed_template_count}/{total} structurally complete")
 
@@ -838,7 +871,12 @@ def command_audit_report(
         print(f"Report parent must be an existing regular directory: {parent}", file=sys.stderr)
         return 2
     workspace_root = workspace.resolve()
-    if output.resolve(strict=False).parent != workspace_root:
+    try:
+        output_parent = output.parent.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        print(f"Could not resolve report parent: {error}", file=sys.stderr)
+        return 2
+    if output_parent != workspace_root:
         print(
             "Report output must be a direct child of the audit workspace root.",
             file=sys.stderr,
@@ -854,24 +892,101 @@ def command_audit_report(
     if output.name.casefold() in reserved_names_casefolded:
         print(f"Report filename is reserved by the audit workspace: {output.name}", file=sys.stderr)
         return 1
-    if report_format == "markdown":
-        content = audit_core.render_report_markdown(workspace)
-    else:
-        content = json.dumps(
-            audit_core.build_report_data(workspace),
-            ensure_ascii=False,
-            indent=2,
-            sort_keys=True,
-        ) + "\n"
+    parent_descriptor: int | None = None
+    workspace_descriptor: int | None = None
+    report_descriptor: int | None = None
+    created = False
     try:
-        with output.open("x", encoding="utf-8", newline="\n") as handle:
-            handle.write(content)
+        parent_descriptor = release_core._open_directory_chain(workspace_root.parent)
+        before = os.stat(
+            workspace_root.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        workspace_descriptor = os.open(
+            workspace_root.name,
+            release_core._directory_open_flags(),
+            dir_fd=parent_descriptor,
+        )
+        opened = os.fstat(workspace_descriptor)
+        if (
+            not stat.S_ISDIR(before.st_mode)
+            or (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino)
+        ):
+            raise release_core.ReleaseError(
+                "audit workspace identity changed while preparing the report"
+            )
+
+        if report_format == "markdown":
+            content = audit_core.render_report_markdown(workspace_root)
+        else:
+            content = json.dumps(
+                audit_core.build_report_data(workspace_root),
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ) + "\n"
+
+        current = os.stat(
+            workspace_root.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            not stat.S_ISDIR(current.st_mode)
+            or (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino)
+        ):
+            raise release_core.ReleaseError(
+                "audit workspace identity changed while rendering the report"
+            )
+        report_descriptor = os.open(
+            output.name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+            dir_fd=workspace_descriptor,
+        )
+        created = True
+        handle = os.fdopen(report_descriptor, "wb")
+        report_descriptor = None
+        with handle:
+            handle.write(content.encode("utf-8"))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.fsync(workspace_descriptor)
+        current = os.stat(
+            workspace_root.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            not stat.S_ISDIR(current.st_mode)
+            or (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino)
+        ):
+            raise release_core.ReleaseError(
+                "audit workspace identity changed while writing the report"
+            )
     except FileExistsError:
         print(f"Refusing to overwrite existing report: {output}", file=sys.stderr)
         return 1
-    except OSError as error:
+    except (OSError, release_core.ReleaseError) as error:
+        if created and workspace_descriptor is not None:
+            try:
+                os.unlink(output.name, dir_fd=workspace_descriptor)
+            except OSError:
+                pass
         print(f"Could not write report: {error}", file=sys.stderr)
         return 2
+    finally:
+        if report_descriptor is not None:
+            os.close(report_descriptor)
+        if workspace_descriptor is not None:
+            os.close(workspace_descriptor)
+        if parent_descriptor is not None:
+            os.close(parent_descriptor)
     print(f"Review report CREATED: {output}")
     print("The report is a rendered evidence record, not a scientific PASS or release approval.")
     return 0
@@ -972,6 +1087,79 @@ def build_parser() -> argparse.ArgumentParser:
     progress_export.add_argument("workspace", type=Path)
     progress_export.add_argument("--output", type=Path, required=True)
     progress_export.add_argument("--format", choices=("markdown", "json"), default="markdown")
+
+    export_parser = subcommands.add_parser(
+        "export",
+        help="Build or verify an honest public case-release artifact.",
+        description=(
+            "Export the current historically public case as an Open Demo. Removing "
+            "controlled files does not make an already public case blind."
+        ),
+    )
+    export_commands = export_parser.add_subparsers(
+        dest="export_command", required=True
+    )
+    open_demo = export_commands.add_parser(
+        "open-demo",
+        help="Create a new non-overwriting Open Demo bundle outside this repository.",
+    )
+    open_demo.add_argument("--output", type=Path, required=True)
+    open_demo.add_argument(
+        "--actor",
+        required=True,
+        help="Declared builder label; this is not authenticated identity.",
+    )
+    open_demo.add_argument(
+        "--run-public-checks",
+        action="store_true",
+        help="Run the optional Level 1-4 public runtime checks before export.",
+    )
+    export_verify = export_commands.add_parser(
+        "verify",
+        help="Verify bundle bytes and checksums; makes no scientific verdict.",
+    )
+    export_verify.add_argument("bundle", type=Path)
+    export_verify.add_argument("--json", action="store_true")
+
+    package_parser = subcommands.add_parser(
+        "package",
+        help="Assemble or verify separated Blind Challenge package candidates.",
+        description=(
+            "Build a local private staging area from three explicit, never-public "
+            "source roots. Successful assembly is not access control or release approval."
+        ),
+    )
+    package_commands = package_parser.add_subparsers(
+        dest="package_command", required=True
+    )
+    blind_package = package_commands.add_parser(
+        "blind",
+        help="Assemble Challenge, Evaluator, and Maintainer candidates without execution.",
+    )
+    blind_package.add_argument(
+        "--manifest",
+        type=Path,
+        required=True,
+        help=(
+            "Strict source manifest outside this public repository; on POSIX its "
+            "file and parent directory must grant no group/other permissions."
+        ),
+    )
+    blind_package.add_argument("--challenge-source", type=Path, required=True)
+    blind_package.add_argument("--evaluator-source", type=Path, required=True)
+    blind_package.add_argument("--maintainer-source", type=Path, required=True)
+    blind_package.add_argument("--output", type=Path, required=True)
+    blind_package.add_argument(
+        "--actor",
+        required=True,
+        help="Declared builder label; this is not authenticated identity.",
+    )
+    package_verify = package_commands.add_parser(
+        "verify",
+        help="Verify all three staged packages and private control bindings.",
+    )
+    package_verify.add_argument("staging", type=Path)
+    package_verify.add_argument("--json", action="store_true")
 
     audit_parser = subcommands.add_parser(
         "audit",
@@ -1282,6 +1470,56 @@ def _dispatch_audit(args: argparse.Namespace) -> int:
     raise AssertionError(f"Unhandled audit command: {args.audit_command}")
 
 
+def _dispatch_release(args: argparse.Namespace) -> int:
+    if args.command == "export":
+        if args.export_command == "open-demo":
+            output = release_core.export_open_demo(
+                args.output,
+                actor=args.actor,
+                run_public_checks=args.run_public_checks,
+            )
+            print(f"Open Demo bundle CREATED: {output}")
+            print("Release mode: OPEN DEMO · HISTORICALLY PUBLIC")
+            print(
+                "The bundle is not a Blind Challenge and its checks are not a scientific verdict."
+            )
+            return 0
+        if args.export_command == "verify":
+            result = release_core.verify_export(args.bundle)
+            if args.json:
+                print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
+            else:
+                print(f"Bundle integrity: {result['integrity_status'].upper()}")
+                print("Scientific correctness: NOT ASSESSED")
+            return 0
+    if args.command == "package":
+        if args.package_command == "blind":
+            output = release_core.package_blind(
+                args.manifest,
+                challenge_source=args.challenge_source,
+                evaluator_source=args.evaluator_source,
+                maintainer_source=args.maintainer_source,
+                output=args.output,
+                actor=args.actor,
+            )
+            print(f"Blind package staging CREATED: {output}")
+            print("Assembly state: ASSEMBLED · AWAITING CONTROLLED PLACEMENT")
+            print(
+                "This local staging area is not access control, grading validation, or release approval."
+            )
+            return 0
+        if args.package_command == "verify":
+            result = release_core.verify_blind_staging(args.staging)
+            if args.json:
+                print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
+            else:
+                print(f"Staging integrity: {result['integrity_status'].upper()}")
+                print(f"Assembly state: {result['assembly_state']}")
+                print("Operational release: NOT APPROVED")
+            return 0
+    raise AssertionError(f"Unhandled release command: {args.command}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -1289,11 +1527,16 @@ def main(argv: list[str] | None = None) -> int:
             return _dispatch_train(args)
         if args.command == "audit":
             return _dispatch_audit(args)
+        if args.command in {"export", "package"}:
+            return _dispatch_release(args)
     except training_core.TrainingError as error:
         print(f"Training operation refused: {error}", file=sys.stderr)
         return 1
     except audit_core.AuditError as error:
         print(f"Audit operation refused: {error}", file=sys.stderr)
+        return 1
+    except release_core.ReleaseError as error:
+        print(f"Release operation refused: {error}", file=sys.stderr)
         return 1
     except OSError as error:
         print(f"Local operation failed: {error}", file=sys.stderr)

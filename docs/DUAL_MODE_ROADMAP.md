@@ -41,7 +41,7 @@ G0 Research Contract / Case Manifest
 | Phase 0：当前基线 | **完成** | P0 | 公开案例被误解为盲测或科学认证 |
 | Phase 1：显式 Train/Audit 与真实闭环 | **本轮已完成** | P0 | 默认写入/执行越权，或把工具输出误解为结论 |
 | Phase 2：进度、人工 Rubric 与 Capstone | **已完成** | P1 | 机械化打分、泄题、把学习增益说得过强 |
-| Phase 3：Demo 导出与 Blind Challenge 分包 | 计划 | P2 | 伪盲测、访问控制缺失、许可证和评价有效性问题 |
+| Phase 3：Demo 导出与 Blind Challenge 分包 | **3A 本地工具完成；3B 受控运营待完成** | P2 | 伪盲测、访问控制缺失、许可证和评价有效性问题 |
 | Phase 4：可选 UI/Registry/集成 | 可选 | P3 | 过早平台化、隐私/锁定、CLI 与 UI 语义漂移 |
 
 ---
@@ -66,7 +66,7 @@ G0 Research Contract / Case Manifest
 | --- | --- |
 | 具体产物 | 明确的命令族：`rcsl train overview`、`rcsl train doctor`、`rcsl train start --level 1..4`、`rcsl train validate`；以及 `rcsl audit init`、`status`、`lint`、`gate check`、`gate record`、`preflight`、`rebaseline`、`finding add/list/transition`、`evidence add`、`verify`、`report build`。四份本地模板为 `research-contract-template.md`、`evidence-passport-template.md`、`triage-card-template.md`、`delegation-contract-template.md`；只写入 `--output` 所指定的项目外审计工作区；临时 clean-Git E2E 测试 |
 | 闭环 | `audit init` 绑定 clean `HEAD` 并创建 G0 `draft` → 人类完成 research contract 与其余模板 → `audit lint` → `audit gate record --decision approved` → `audit preflight` → finding/evidence 与有理由的状态转换 → `audit verify` 与本地 Markdown/JSON review report |
-| 验收标准 | 临时 Git fixture 走通“init → 完成模板/lint → G0 approve/preflight → finding/evidence → 合法 `verified`/`closed` transition → verify/report”；测试确认该 fixture 的目标 `HEAD`、工作树状态与已追踪文件保持不变；所有 Audit 命令默认不执行项目、不联网、不读隔离答案；lint、verify、report 明确不等于科学判决 |
+| 验收标准 | 临时 Git fixture 走通“init → 完成模板/lint → G0 approve/preflight → finding/evidence → 合法 `verified`/`closed` transition → verify/report”；`audit init` 要求直接父目录已存在并通过固定父/新目录句柄独占写入，`report build` 固定 workspace 身份、拒绝覆盖并在 POSIX 输出 `0600`；路径替换测试证明不会写入重定向目标。测试还确认目标 `HEAD`、工作树状态与已追踪文件保持不变；Audit 默认不执行项目、不联网、不读隔离答案，所有状态不是科学判决 |
 | 非目标 | 让 Agent 自主定义问题、运行任意脚本、直接修复原项目、自动批准发布或给出不带证据的正确性 verdict |
 | 依赖 | 稳定 CLI schema、公开模板、项目只读/外部 workspace 策略、本地 hash-chain lifecycle、临时 Git E2E 测试与人工 review 规则 |
 | 退出条件 | **已满足。**标准库 CLI 已在全新临时 clean-Git 目录中完成上述闭环；测试确认该 fixture 的目标 `HEAD`、工作树状态与已追踪文件保持不变，文档给出每条命令的权限与边界 |
@@ -88,19 +88,20 @@ G0 Research Contract / Case Manifest
 
 **风险控制：**CLI 只检查小节、内容和模板提示，绝不自动推导语义、科学正确性或成熟度；`progress.json` 的摘要与原子写入只提供本地一致性，不提供身份认证或外部不可篡改性。当前案例保持 `open-demo-honor-isolation`；在没有预注册研究之前，不声称课程提升了真实研究质量。完整命令见 [Mode Train 指南](TRAIN_MODE.md)。
 
-## Phase 3：Open Demo 导出与真正 Blind Challenge 分包
+## Phase 3：Open Demo 导出与真正 Blind Challenge 分包（部分完成）
 
 **目的：**支持诚实的公开教学发布，并为未来受控盲测建立正确的包边界。
 
 | 项目 | 内容 |
 | --- | --- |
-| 具体产物 | `rcsl export open-demo`：导出来源、版本、许可、已知限制和公开验证记录；`rcsl package blind`：从一开始产生 Challenge Package、受控 Evaluator Package 和受控 Maintainer Record；manifest、checksum、泄题扫描与撤销模板 |
-| 验收标准 | Open Demo 清楚显示不是安全隔离；合成 fixture 的 Challenge Package 不含答案映射、private probe 或评价标签；Evaluator Package 可在独立受控环境评分；每个包可追溯版本与来源 |
+| Phase 3A：本地工具（已完成） | `export open-demo --output NEW_DIR --actor LABEL [--run-public-checks]` 为当前 LLM4SBR Open Demo 生成可独立复核的冻结快照；`export verify BUNDLE [--json]` 检查精确 root/payload，并在受信任 checkout 中逐字节核对 verifier/boundary。`package blind --manifest ... --challenge-source ... --evaluator-source ... --maintainer-source ... --output NEW_PRIVATE_STAGING --actor LABEL` 生成 `0700` 私有 staging；`package verify STAGING [--json]` 复核三包、精确来源清单、可执行位、BUILD_RECORD、有界泄题规则与 POSIX 私有 mode |
+| 3A 验收标准 | Open Demo 与 Blind 输出都位于公开仓库外、目标尚不存在且直接父目录已存在；Blind manifest 与三个来源也位于公开仓库外，三个来源彼此不同且互不包含，Blind 输出与任一来源也不能相互包含；POSIX manifest/直接父目录无 group/other 权限。严格 JSON 拒绝浮点数、重复/未知字段和布尔整数替代，版本满足严格 SemVer，时间采用规范 UTC RFC3339 `YYYY-MM-DDTHH:MM:SS[.fraction]Z`，模板占位值 fail closed。每个角色的非生成 payload 精确等于 `source_inventory`，BUILD_RECORD 绑定 tool revision scope/worktree state 与 packager/verifier 摘要；正常组装后的三个角色都能从自身根目录通过 standalone 自验，不读取兄弟包，并对容量、不可读目录、symlink/special file 和受保护路径 fail closed。仓库侧信任校验与对应工具 revision 绑定，受信任字节变化后旧包必须切换到其记录的工具版本复核。Challenge 不含受控映射/摘要/元数据；blind staging 唯一状态为 `assembled-awaiting-controlled-placement`，mode 检查不冒充 ACL |
+| Phase 3B：受控运营（待完成） | 为一个全新且从未公开的案例提供独立私有 evaluator/maintainer 存储、最小权限、访问记录、冻结评分规则、许可复核、独立 evaluator、受控执行、人工泄题审查、具名发布签署与泄漏失效/撤回演练 |
 | 非目标 | 把当前 LLM4SBR 或任何已公开案例重新压缩、加密或换目录后称为“未见盲题”；把本地打包器当成访问控制、保密保证或测量有效性保证 |
-| 依赖 | 独立的私有评测存储、最小权限、访问记录、冻结评分规则、许可审查、独立评测者与泄露失效流程 |
-| 退出条件 | 新建且从未公开的案例在受控环境完成分包、泄题审查、独立评分和泄露演练；当前公开案例仍明确标为 Open Demo |
+| 依赖 | 3A 已由标准库本地工具和合成测试覆盖；3B 仍依赖独立的私有评测存储、最小权限、访问记录、冻结评分规则、许可审查、独立评测者与泄露失效流程 |
+| 整体退出条件 | **尚未满足。**必须由新建且从未公开的案例在受控环境完成分包、人工泄题审查、独立评分和泄露演练；当前公开 LLM4SBR 继续明确标为 Open Demo |
 
-**关键事实：**历史公开过的题目不会因为重新打包而变成未见题。真正的 Blind Challenge 必须使用新的、从未公开且有运维能力保护的案例；打包工具只能帮助执行边界，不能回收已经泄露的信息。
+**关键事实：**历史公开过的题目不会因为重新打包而变成未见题。真正的 Blind Challenge 必须使用新的、从未公开且有运维能力保护的案例；本地打包和 `package verify` 只能执行文件、摘要、精确包边界与当前 POSIX mode 契约，不能验证 ACL、回收已经泄露的信息或替代人工运营门。Phase 3A 的本地工具完成不改变 Phase 3B 和 Phase 3 整体仍未完成的事实。详见 [案例发布模型](CASE_RELEASE_MODEL.md)。
 
 ## Phase 4：可选 Web UI、Registry 与集成
 

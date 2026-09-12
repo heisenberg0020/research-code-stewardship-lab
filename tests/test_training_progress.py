@@ -408,6 +408,14 @@ class TrainingProgressTests(unittest.TestCase):
         with self.assertRaisesRegex(TrainingError, "non-finite JSON"):
             load_progress(self.workspace)
 
+        for invalid_version in (True, 1.0):
+            with self.subTest(schema_version=invalid_version):
+                progress = json.loads(original)
+                progress["schema_version"] = invalid_version
+                progress_path.write_text(json.dumps(progress), encoding="utf-8")
+                with self.assertRaisesRegex(TrainingError, "unsupported progress schema"):
+                    load_progress(self.workspace)
+
         progress_path.write_text("[" * 2_000 + "0" + "]" * 2_000, encoding="utf-8")
         with self.assertRaisesRegex(TrainingError, "invalid progress JSON"):
             load_progress(self.workspace)

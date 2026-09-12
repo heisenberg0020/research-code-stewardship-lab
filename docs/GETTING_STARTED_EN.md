@@ -4,9 +4,9 @@
 
 **Research Code Stewardship Lab** helps you decide whether runnable research code, experiments, and agent workflows still honor the paper, experimental protocol, and evidence trail behind them. It is not a code-writing speed course. It develops evidence-based research judgment for the coding-agent era.
 
-[中文指南](GETTING_STARTED.md) · [Repository map](../REPOSITORY_MAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Mode Train](TRAIN_MODE_EN.md) · [Mode Audit](AUDIT_MODE_EN.md) · [Dual-mode roadmap](DUAL_MODE_ROADMAP_EN.md)
+[中文指南](GETTING_STARTED.md) · [Repository map](../REPOSITORY_MAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Mode Train](TRAIN_MODE_EN.md) · [Mode Audit](AUDIT_MODE_EN.md) · [Case release](CASE_RELEASE_MODEL_EN.md) · [Dual-mode roadmap](DUAL_MODE_ROADMAP_EN.md)
 
-The CLI now has two explicit paths: `rcsl.py train ...` develops human capability (it does not train a model), while `rcsl.py audit ...` records evidence and decisions for a real Git project. Legacy top-level commands remain compatibility aliases only.
+The CLI has two explicit work paths: `rcsl.py train ...` develops human capability (it does not train a model), while `rcsl.py audit ...` records evidence and decisions for a real Git project. Case maintainers separately use `rcsl.py export ...` / `package ...` to create release artifacts; these are not a third audit mode and do not approve release automatically. Legacy top-level commands remain compatibility aliases only.
 
 ## Choose your path
 
@@ -16,6 +16,7 @@ The CLI now has two explicit paths: `rcsl.py train ...` develops human capabilit
 | **Project owner / auditor** | Read the [Mode Audit guide](AUDIT_MODE_EN.md), then bind a clean Git `HEAD` with `python scripts/rcsl.py audit init ...` | G0, structured finding/evidence lifecycle, local event chain, and a human-review report |
 | **Reviewer / maintainer** | Run public checks and review the package contract, documentation, and entry points | A reproducible public-check report and a list of risks that still need human review |
 | **Research owner** | Freeze the paper–code–experiment protocol, then design a new package with the Skill | A human-approved four-level design specification—not unreviewed candidate code |
+| **Case publisher** | First decide whether the case is an already-public Open Demo or a never-public candidate separated from day one | A verifiable Open Demo bundle, or local three-package staging that still awaits controlled placement |
 
 ---
 
@@ -94,7 +95,7 @@ The expected output is a traceable maintenance note: what changed, which public 
 
 ## Path C: Audit a real project
 
-Choose the level whose contract is the earliest suspected failure. The target must be a clean Git worktree, and the new workspace must be outside it. For example, begin at L2 when investigating data identity or checkpoint flow:
+Choose the level whose contract is the earliest suspected failure. The target must be a clean Git worktree, and the new workspace must be outside it. `--output` must not exist, but its immediate parent directory must already exist and be accessible. For example, begin at L2 when investigating data identity or checkpoint flow:
 
 ```bash
 rcsl() { python scripts/rcsl.py "$@"; }
@@ -106,7 +107,7 @@ rcsl audit init --project "$PROJECT" --output "$WORKSPACE" \
 rcsl audit status "$WORKSPACE"
 ```
 
-Initialization pins the current `HEAD` and branch and creates four public templates, `findings/`, workspace metadata, and a hash-chained event log. G0 starts as `draft`. Edit these files in the new directory:
+Initialization pins the current `HEAD` and branch and creates four public templates, `findings/`, workspace metadata, and a hash-chained event log. G0 starts as `draft`. Files are exclusively created through pinned parent/new-workspace descriptors and directory identity is rechecked before completion; a path replaced or redirected during creation fails closed. Edit these files in the new directory:
 
 | File | Decision or evidence you provide |
 | --- | --- |
@@ -145,6 +146,8 @@ rcsl audit lint "$WORKSPACE"
 rcsl audit verify "$WORKSPACE"
 rcsl audit report build "$WORKSPACE" --output "$WORKSPACE/review.md" --format markdown
 ```
+
+The report must be a nonexistent, non-reserved direct child of the workspace root. The command pins and rechecks workspace identity, writes with no-follow and exclusive-create semantics, and uses `0600` on POSIX. These are local anti-overwrite controls, not a signature or access-control mechanism.
 
 If the target `HEAD` changes, preflight refuses to continue. A human must review the change and explicitly replace the baseline. This resets G0 to `draft`; old findings remain bound to the old commit:
 
@@ -192,6 +195,63 @@ The expected output is a reviewable specification that connects paper claims, co
 
 ---
 
+## Path E: Publish a case
+
+### Already-public case: export an Open Demo
+
+The current LLM4SBR case, its Git history, and related teaching material are already public, so it can only be released as an Open Demo:
+
+```bash
+python scripts/rcsl.py export open-demo \
+  --output /absolute/path/to/new-open-demo-bundle \
+  --actor "maintainer label" \
+  --run-public-checks
+python scripts/rcsl.py export verify /absolute/path/to/new-open-demo-bundle
+```
+
+`--output` must remain outside the public RCSL repository, name a nonexistent target, and have an existing, accessible immediate parent directory. `--run-public-checks` is optional; when present, the export record retains the command and result from this run. When omitted, the record must make clear that checks were not run during this export. The bundle contains a public boundary statement, manifest, checksums, validation record, revocation template, and a public verifier that does not depend on this repository's path.
+
+Export first creates a frozen public-source snapshot. Static checks and selected public runtime checks run against that snapshot. The manifest's `source_tree_sha256` binds the actual paths, bytes, sizes, and executable bits; `source_revision_scope` and `repository_worktree_state` clarify that Git `HEAD` is revision context and record whether the source worktree was `clean` or `dirty`.
+
+Add `--json` to `export verify` for machine-readable output. Successful verification establishes only consistency between the retained files, manifest, and checksums. It does not establish paper correctness, learning effectiveness, or secure answer isolation.
+
+### New, never-public case: assemble private staging only
+
+A Blind Challenge may be prepared only when learner-facing, Evaluator, and Maintainer material was separated from creation and the complete case has never been public:
+
+```bash
+python scripts/rcsl.py package blind \
+  --manifest /absolute/path/to/BLIND_SOURCE.json \
+  --challenge-source /absolute/path/to/learner-facing-source \
+  --evaluator-source /absolute/path/to/evaluator-source \
+  --maintainer-source /absolute/path/to/maintainer-source \
+  --output /absolute/path/to/new-private-staging \
+  --actor "maintainer label"
+python scripts/rcsl.py package verify /absolute/path/to/new-private-staging
+```
+
+`BLIND_SOURCE.json` and all three source roots must remain outside the public RCSL repository; the three source roots must be distinct and pairwise non-nested. `--output` must also remain outside the public repository, name a nonexistent target, and have an existing immediate parent; it must neither contain nor be contained by any source root. On POSIX, the manifest file and its immediate parent must grant no group/other mode bit (normally `0600` and `0700`, respectively). The output root has private `0700` permissions and contains separate `challenge/`, `evaluator/`, and `maintainer/` packages. Challenge Package is the learner-facing package; do not create a fourth “Learner Package.” The only generated state is `assembled-awaiting-controlled-placement`: local assembly is complete, but a Blind Challenge is **not released or made confidential**.
+
+When preparing `BLIND_SOURCE.json`, every `package_files` entry must declare a boolean `executable` value. Each role's `root_digest` binds `path`, `sha256`, `size`, and that executable bit; copied executable source retains owner execute. Each role manifest also exposes a `source_inventory` carrying `license_id`, `sensitivity`, and `executable`, plus only the licenses used by that role with `approval_ref` removed. The shipped manifest template is only an editing starting point: `package blind` refuses it until all `REPLACE:`, `replace-*`, `your-*`, and `{{...}}` placeholders, 1970 timestamps, and all-zero scoring/source digests are replaced. Parsing rejects all floating-point JSON, duplicate/unknown fields, and booleans substituted for integers; case and scoring versions must satisfy strict SemVer and timestamps must use canonical UTC RFC 3339 `YYYY-MM-DDTHH:MM:SS[.fraction]Z`.
+
+Verification requires exact roots and payloads: Open Demo root-level support files must equal the fixed allowlist, and each role's non-generated payload must equal its `source_inventory`. Repository-side verification also compares the trusted verifier and schema-specific boundary bytes exactly. Blind staging's `BUILD_RECORD.json` binds the limited tool-revision scope, worktree state, and packager/verifier byte digests. After normal assembly, run `python verify_package.py` from any role root; it still checks only that package when controlled siblings are absent or unreadable, while failing closed on capacity excess, an unreadable directory, a special file, symlink, or protected path. Archive an old bundle/staging with its tool revision. If a newer checkout has different trusted bytes, repository-side verification rejects the old package; use the recorded revision rather than rewriting old manifests/checksums.
+
+Before any external release, human operators must still:
+
+1. establish that the case and its Git history were never public and approve blind eligibility;
+2. review provenance, licenses, privacy, ethics, and sensitive-data classification;
+3. place Evaluator Package and Maintainer Record in separate controlled storage with least privilege and access records;
+4. freeze scoring rules and complete independent-evaluator, repeatability, and measurement-validity review;
+5. perform human leakage review of Challenge Package and relevant history;
+6. validate controlled execution, credentials, network, and submission handling;
+7. record a named release sign-off and exercise leakage invalidation, withdrawal, and replacement.
+
+Add `--json` to `package verify` when needed. This is a maintainer-side command that reads all three staging roles; never give it to learners or place it in the public Challenge environment. Assembly and this trusted staging verification use the private `BLIND_SOURCE.json` value of `scoring.digest` for an exact-value scan of Challenge source payloads. An isolated Challenge standalone does not know that value and can check only public rules, so its `PASS` cannot establish absence of an unknown private digest. Do not put `scoring.digest` or a commitment derived from private scoring material in Challenge; its public scoring reference retains only the protocol ID/version. Tooling also refuses version-control metadata and common secret paths/key suffixes; a file with an unknown suffix still receives content leakage scanning whenever it decodes as UTF-8. On POSIX, verification also requires the staging tree to have no group/other permission bits, but that is only a current-mode check—not an ACL check. It neither performs the operational gates above nor recovers information that was already public. See the [case release model](CASE_RELEASE_MODEL_EN.md) for the complete rules.
+
+Therefore, only **Phase 3A local release tooling** is complete. Phase 3B controlled placement, independent evaluation, human sign-off, and leakage drills—and Phase 3 overall—remain incomplete.
+
+---
+
 ## Two boundaries that always apply
 
 ### 1. Answer isolation protects the learning value
@@ -218,3 +278,4 @@ Every audit must therefore return to primary evidence, the frozen protocol, and 
 - Need to see what is implemented and what comes next? Read the [dual-mode roadmap](DUAL_MODE_ROADMAP_EN.md).
 - Want a paper-first, source-blind baseline? Use the [Source-Blind Protocol](PAPER_ONLY_REPRODUCTION_PROTOCOL.md).
 - Want to adapt the workflow to your paper? Read the [Skill](../skills/research-code-audit-training/SKILL.md).
+- Exporting an Open Demo or preparing controlled split packages for a new case? Read the [case release model](CASE_RELEASE_MODEL_EN.md).

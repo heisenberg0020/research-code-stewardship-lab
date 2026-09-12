@@ -7,7 +7,7 @@
 ## Non-negotiable boundaries
 
 - An audit binds to a **specific Git `HEAD` commit**, not an approximate current directory state.
-- `PROJECT` must be a clean Git worktree; `WORKSPACE` must live outside the project directory, and the `init` output path must not exist.
+- `PROJECT` must be a clean Git worktree; `WORKSPACE` must live outside the project directory, the `init` output path must not exist, and its immediate parent directory must already exist and be accessible.
 - By default, RCSL reads only the target project and Git metadata. All new records are written only to `WORKSPACE`.
 - G0 is a **declarative research contract** completed, reviewed, and recorded by a human. `--actor` and `--reviewer` are local traceability labels, **not** identity authentication, signatures, or access control.
 - Running code, using the network, accessing additional/protected material, changing source, or using a larger budget requires another explicitly authorized tool flow. Mode Audit never performs those actions implicitly.
@@ -30,7 +30,7 @@ clean Git commit + G0 draft
 → local verify + rendered review report
 ```
 
-`audit init` creates these public templates and sets the G0 gate to `draft`:
+`audit init` creates these public templates and sets the G0 gate to `draft`. Initialization pins descriptors for the resolved parent and new workspace, writes relative to them with no-follow and exclusive-create semantics, and rechecks the new directory's device/inode identity before finishing. A path replaced or redirected during creation therefore fails closed without overwriting same-named files in the redirect target.
 
 | Local artifact | Purpose |
 | --- | --- |
@@ -47,7 +47,7 @@ Below, `rcsl` denotes the CLI (for example, run `python scripts/rcsl.py` from th
 | Command | Purpose and key prerequisite | What it does not mean |
 | --- | --- | --- |
 | `rcsl train overview`; `rcsl train doctor`; `rcsl train start --level 1..4`; `rcsl train validate` | Mode Train curriculum navigation, environment diagnosis, per-level entry, and public checks | Training a model or issuing a scientific verdict |
-| `rcsl audit init --project PROJECT --output WORKSPACE --level 1..4 --actor ACTOR [--reason TEXT]` | Rejects dirty/non-Git projects and in-project workspaces; binds clean `HEAD`; creates G0 `draft` | Authenticating an actor, executing the project, approving G0, or accepting any conclusion |
+| `rcsl audit init --project PROJECT --output WORKSPACE --level 1..4 --actor ACTOR [--reason TEXT]` | Requires an existing immediate parent; rejects dirty/non-Git projects, in-project workspaces, and existing outputs; writes exclusively through pinned parent/workspace descriptors, binds clean `HEAD`, and creates G0 `draft` | Authenticating an actor, executing the project, approving G0, or accepting any conclusion |
 | `rcsl audit status WORKSPACE [--json]` | Reads binding, G0, finding, ledger, and preflight summary | Validating scientific correctness |
 | `rcsl audit lint WORKSPACE` | Reports complete only when **all four templates** have required headings and no unresolved `{{...}}` | Approving G0 or deciding a finding holds |
 | `rcsl audit gate check WORKSPACE [--json]` | Checks research-contract completeness and whether its current bytes match the recorded gate | Granting authority or authenticating a reviewer |
@@ -59,7 +59,7 @@ Below, `rcsl` denotes the CLI (for example, run `python scripts/rcsl.py` from th
 | `rcsl audit finding transition WORKSPACE --finding ID --to open\|triaged\|accepted\|mitigated\|verified\|closed\|dismissed\|blocked --actor ACTOR --rationale TEXT` | Appends a legal, reasoned lifecycle transition | Erasing prior records or automatically calling a repair trustworthy |
 | `rcsl audit evidence add WORKSPACE --finding ID --id ID --kind asserted\|observed\|derived\|reproduced\|contradicted --reference TEXT --summary TEXT --actor ACTOR` | Appends typed evidence on a current baseline that passed preflight | Proving evidence sufficient, independent, or unbiased |
 | `rcsl audit verify WORKSPACE [--json]` | Checks local metadata, snapshots, and hash-chain consistency | Verifying remote history, identity, or scientific conclusion |
-| `rcsl audit report build WORKSPACE --output PATH [--format markdown\|json]` | Creates one non-existing Markdown/JSON review record directly in the workspace root (Markdown by default); refuses subdirectories, external paths, and filenames matching `.rcsl-write.lock`, `audit-workspace.json`, `audit-events.jsonl`, or any of the four templates case-insensitively | Creating a scientific PASS or release approval |
+| `rcsl audit report build WORKSPACE --output PATH [--format markdown\|json]` | Exclusive-creates one non-existing Markdown/JSON review record directly in the workspace root (Markdown by default), with mode `0600` on POSIX; pins and rechecks workspace identity and refuses symlinks, subdirectories, external paths, and filenames matching `.rcsl-write.lock`, `audit-workspace.json`, `audit-events.jsonl`, or any of the four templates case-insensitively | Creating a scientific PASS, signature, or release approval |
 
 ### G0, lint, and preflight are different
 
@@ -180,6 +180,8 @@ A local hash chain only makes edits, reorderings, or breaks easier to notice in 
 - provide access control, confidentiality, legal compliance, or scientific validity.
 
 One lifecycle action updates a snapshot and appends an event; these writes are not a cross-file database transaction. If a process, disk, or machine fails partway through a multi-file update, the next `verify` fails closed and the workspace may retain `.rcsl-write.lock`. Preserve/back up the state and inspect it manually; do not “repair” history by editing JSON or recomputing hashes.
+
+Pinned-directory writes, exclusive creation, identity rechecks, and POSIX `0600` report output are fail-closed defenses against accidental overwrites and common local path-replacement races. They are not a transactional database, digital signature, ACL, or a boundary against a malicious local writer.
 
 Stronger assurance needs separate controlled storage, code-host audit records, signatures, independent review, and organizational policy. Those capabilities must not be described as default CLI protections.
 

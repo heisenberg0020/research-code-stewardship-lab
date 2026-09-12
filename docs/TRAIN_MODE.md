@@ -158,6 +158,10 @@ python scripts/rcsl.py train progress export \
 
 `--format` 可取 `markdown` 或 `json`。导出会省略学习者标签、worksheet 快照和可能带身份信息的自由文本 feedback/gap，只保留是否记录过 gap；审阅者标签会转换为 `reviewer-1` 等别名。它保留结构状态、最新提交摘要、当前人工决定和成熟度观察。完整反馈只留在本地 `progress.json` 与 `status --json` 中。导出是可读记录，不是认证书、签名或科学 `PASS`。
 
+### 不要混淆两种 export
+
+`train progress export` 只导出一位学习者的脱敏进度摘要。案例维护者使用的 `python scripts/rcsl.py export open-demo ...` 会生成另一个目录级公开发布包，两者不是同一格式。后者会冻结本次公开源树、在该快照上运行所选检查，并用 `source_tree_sha256` 绑定实际导出内容；它还要求精确 root/payload，仓库侧验证会核对受信任 verifier 与 boundary。这些行为与学习进度记录无关。前者不能发布案例，后者也不是个人成绩单；二者都不能生成或认证 Blind Challenge。当前 LLM4SBR 已经公开，只能保持 Open Demo。完整发布边界见 [案例发布模型](CASE_RELEASE_MODEL.md)。
+
 ## 记录与信任边界
 
 - `progress.json` 在一次写入中原子替换，并用本地互斥锁避免两个写入者同时更新；意外遗留锁时，应先确认没有活跃写入者，再按错误提示处理。
