@@ -11,6 +11,17 @@ RCSL retains only two core user outcomes:
 
 `export` and `package` are case-release utilities, not a third mode. Presentation, hosting, and other integrations will be reconsidered only after the core workflows have completed real pilots.
 
+## Anti-drift rule
+
+The repository began as a four-level audit-training project. It later deliberately added a second outcome: helping an owner audit real research code and manage its evidence. That intentional dual-mode expansion is not a mandate to become a general security, publishing, or presentation platform.
+
+A new capability may enter the core only when it directly improves at least one of these user loops:
+
+1. an audit owner can locate, preserve, review, or hand off evidence and human decisions for a real project more accurately; or
+2. a learner and an independent reviewer can complete judgment, proof, feedback, and retry against the same frozen material.
+
+More tests, filesystem defenses, pages, registries, integrations, or “platform feel” are not sufficient reasons unless they remove an observed blocker in one of those loops. General authorization, defense against a malicious same-privilege local process, remote operations, and hosted services require a separately owned deployment boundary.
+
 ## Status terms must remain distinct
 
 | Status | Meaning | It does not establish |
@@ -47,7 +58,7 @@ Risks that must close first:
 2. Give G0 one authoritative decision source so template text and machine state cannot contradict each other.
 3. Make multi-file mutation atomic or provide an explicit and tested recovery procedure.
 4. Enforce size and capacity limits before writing so a successful mutation cannot create an unverifiable workspace.
-5. Rename states such as `review-ready` to match their actual guarantee and avoid confusing preflight readiness with audit completion.
+5. Status words now use scoped terms such as `g0-prerequisites-met`, `preflight-passed`, `local-records-consistent`, and `preflight-current`, avoiding confusion between process state and audit completion.
 
 **Next exit gate:** regression tests cover every item above and a fresh temporary project completes a failure-recovery scenario. This still raises only internal confidence.
 

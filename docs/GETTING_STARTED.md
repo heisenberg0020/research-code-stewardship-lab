@@ -156,7 +156,7 @@ rcsl audit rebaseline "$WORKSPACE" --actor "research-owner" \
   --reason "Reviewed the new commit; prior evidence remains on the old baseline."
 ```
 
-`lint`、`gate check`、`preflight`、`verify` 和 `report build` 只说明它们声明的结构或本地一致性范围，**不表示研究问题正当、finding 成立、修复正确或科学结论获批**。`--actor` / `--reviewer` 是未认证的记录标签；hash chain 只能检出仍被保留的本地历史中的不一致，不能防删除、整体重写或认证身份。任何 scoped 状态都不是 scientific PASS。
+`lint`、`gate check`、`preflight`、`verify` 和 `report build` 只说明它们声明的结构或本地一致性范围，**不表示研究问题正当、finding 成立、修复正确或科学结论获批**。`--actor` / `--reviewer` 是未认证的记录标签；hash chain 只能检出仍被保留的本地历史中的不一致，不能防删除、整体重写或认证身份。任何 scoped 状态都不是 scientific PASS；finding 的 `verified` / `closed` 只是声明式生命周期状态，不是独立验证或科学认证。
 
 Mode Audit 默认只读取目标项目和 Git 元数据，**不执行项目代码、不联网、不修改项目**。需要这些动作时，应在本工具之外另行取得明确授权。命令状态、finding 转换规则与 hash-chain 限制见 [Mode Audit 完整指南](AUDIT_MODE.md)。
 

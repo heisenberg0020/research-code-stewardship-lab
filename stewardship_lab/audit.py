@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import errno
 from functools import wraps
 import hashlib
 import io
@@ -20,7 +21,13 @@ import re
 import stat
 import subprocess
 import tempfile
+import threading
 import uuid
+
+try:  # POSIX advisory locks are the required local concurrency primitive.
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - exercised only on non-POSIX Python.
+    _fcntl = None
 
 
 SCHEMA_VERSION = 2
@@ -28,7 +35,10 @@ WORKSPACE_METADATA_NAME = "audit-workspace.json"
 FINDINGS_DIRECTORY_NAME = "findings"
 EVENT_LOG_NAME = "audit-events.jsonl"
 PENDING_COMMIT_NAME = ".rcsl-audit-pending.json"
-PENDING_COMMIT_SCHEMA_VERSION = 1
+LOCK_FILE_NAME = ".rcsl-write.lock"
+LEGACY_PENDING_COMMIT_SCHEMA_VERSION = 1
+PENDING_COMMIT_SCHEMA_VERSION = 2
+LIFECYCLE_PROJECTION_MODE = "full_v1"
 ISOLATED_DIRECTORY_NAME = "DO_NOT_OPEN_UNTIL_FINISHED"
 MAX_AUDIT_FILE_BYTES = 16_000_000
 MAX_EVENT_LOG_BYTES = 48_000_000
@@ -59,6 +69,9 @@ G0_STATUS_ALIASES = {
     "block": "blocked",
     "blocked": "blocked",
 }
+LIFECYCLE_EVENT_TYPES = frozenset(
+    {"workspace_bound", "g0_gate_set", "baseline_replaced"}
+)
 FINDING_STATUSES = ("open", "triaged", "accepted", "mitigated", "verified", "closed", "dismissed", "blocked")
 FINDING_TRANSITIONS = {
     "open": {"triaged", "dismissed", "blocked"},
@@ -70,10 +83,18 @@ FINDING_TRANSITIONS = {
     "dismissed": {"open"},
     "blocked": {"triaged", "dismissed"},
 }
-TRUSTED_TERMINAL_STATUSES = ("verified", "closed")
+EVIDENCE_GATED_STATUSES = ("verified", "closed")
 FINDING_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
 CONTRACT_PLACEHOLDER_PATTERN = re.compile(
     r"\{\{[^{}\n]+\}\}|\[TODO\]|\[填写\]|待填写|^\s*(?:TODO|TBD)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+LEGACY_CONTRACT_DECISION_PATTERN = re.compile(
+    r"^\s*[-*]\s+(?:"
+    r"Status\s+\(`draft`,\s*`approved`,\s*or\s*`blocked`\)"
+    r"|Decision\s+\(`approve`,\s*`revise`,\s*or\s*`stop`\)"
+    r"|Approver\s+and\s+date"
+    r")\s*:",
     re.IGNORECASE | re.MULTILINE,
 )
 MARKDOWN_HEADING_PATTERN = re.compile(r"^#{1,6}\s+(.+?)\s*$", re.MULTILINE)
@@ -93,40 +114,124 @@ class AuditError(RuntimeError):
     """Raised when an audit lifecycle operation would be unsafe or inconsistent."""
 
 
-@contextmanager
-def _workspace_write_lock(workspace: Path):
-    """Serialize local writers with an atomic, fail-closed lock file.
+_WORKSPACE_LOCK_STATE = threading.local()
 
-    A process crash can leave the lock behind. The error deliberately asks for
-    human review instead of guessing that an existing lock is stale.
+
+@contextmanager
+def _workspace_advisory_lock(workspace: Path, *, exclusive: bool):
+    """Hold one process-scoped advisory lock on a fixed workspace lock file.
+
+    Closing the descriptor releases the kernel lock, including after process
+    death.  The harmless lock file deliberately remains in place.  Reentrant
+    shared reads (and reads inside an exclusive mutation) reuse the outer lock;
+    a shared-to-exclusive upgrade is refused instead of risking deadlock.
     """
 
-    lock_path = workspace / ".rcsl-write.lock"
-    try:
-        descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    except FileExistsError as error:
+    if _fcntl is None:
         raise AuditError(
-            "audit workspace is locked by another writer; if no writer is active, "
-            "review and remove .rcsl-write.lock manually"
-        ) from error
-    except OSError as error:
-        raise AuditError(f"could not acquire audit workspace write lock: {error}") from error
+            "audit workspace locking requires POSIX fcntl.flock; this platform "
+            "is not supported"
+        )
+    key = str(workspace)
+    states = getattr(_WORKSPACE_LOCK_STATE, "states", None)
+    if states is None:
+        states = {}
+        _WORKSPACE_LOCK_STATE.states = states
+    existing = states.get(key)
+    if existing is not None:
+        if exclusive and not existing["exclusive"]:
+            raise AuditError(
+                "cannot upgrade an audit workspace read lock to a write lock"
+            )
+        existing["depth"] += 1
+        try:
+            yield
+        finally:
+            existing["depth"] -= 1
+        return
+
+    lock_path = workspace / LOCK_FILE_NAME
+    descriptor: int | None = None
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(f"pid={os.getpid()}\n")
-            handle.flush()
-            os.fsync(handle.fileno())
+        descriptor = os.open(
+            lock_path,
+            os.O_CREAT
+            | os.O_RDWR
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+        )
+    except OSError as error:
+        raise AuditError(f"could not open audit workspace lock: {error}") from error
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise AuditError("audit workspace lock path must be a regular file")
+        operation = (_fcntl.LOCK_EX if exclusive else _fcntl.LOCK_SH) | _fcntl.LOCK_NB
+        try:
+            _fcntl.flock(descriptor, operation)
+        except OSError as error:
+            if error.errno in {errno.EACCES, errno.EAGAIN}:
+                role = "another reader or writer" if exclusive else "another writer"
+                raise AuditError(f"audit workspace is locked by {role}") from error
+            raise AuditError(
+                f"could not acquire audit workspace advisory lock: {error}"
+            ) from error
+        states[key] = {
+            "depth": 1,
+            "descriptor": descriptor,
+            "exclusive": exclusive,
+        }
         yield
     finally:
+        current = states.get(key)
+        if current is not None and current.get("descriptor") == descriptor:
+            states.pop(key, None)
+        if descriptor is not None:
+            try:
+                _fcntl.flock(descriptor, _fcntl.LOCK_UN)
+            except OSError:
+                # close() still releases the process-scoped lock.
+                pass
+            os.close(descriptor)
+
+
+@contextmanager
+def audit_workspace_read_lock(workspace_value: str | Path):
+    """Expose one fail-closed shared boundary for composite CLI reads."""
+
+    workspace = _existing_directory(workspace_value, "audit workspace")
+    with _workspace_advisory_lock(workspace, exclusive=False):
+        _assert_no_pending_commit(workspace)
         try:
-            lock_path.unlink()
-        except FileNotFoundError:
-            pass
-        except OSError as error:
-            raise AuditError(f"could not release audit workspace write lock: {error}") from error
+            yield workspace
+        finally:
+            _assert_no_pending_commit(workspace)
 
 
-def _serialized_workspace_mutation(workspace_argument_index: int):
+def _serialized_workspace_read(workspace_argument_index: int):
+    """Decorate a public read whose workspace is one positional argument."""
+
+    def decorate(function):
+        @wraps(function)
+        def wrapped(*args, **kwargs):
+            if len(args) > workspace_argument_index:
+                workspace_value = args[workspace_argument_index]
+            else:
+                workspace_value = kwargs.get("workspace", kwargs.get("workspace_value"))
+            if workspace_value is None:
+                raise AuditError("workspace is required")
+            with audit_workspace_read_lock(workspace_value):
+                return function(*args, **kwargs)
+
+        return wrapped
+
+    return decorate
+
+
+def _serialized_workspace_mutation(
+    workspace_argument_index: int, *, allow_pending: bool = False
+):
     """Decorate a public mutation whose workspace is one positional argument."""
 
     def decorate(function):
@@ -139,7 +244,9 @@ def _serialized_workspace_mutation(workspace_argument_index: int):
             if workspace_value is None:
                 raise AuditError("workspace is required")
             workspace = _existing_directory(workspace_value, "audit workspace")
-            with _workspace_write_lock(workspace):
+            with _workspace_advisory_lock(workspace, exclusive=True):
+                if not allow_pending:
+                    _assert_no_pending_commit(workspace)
                 return function(*args, **kwargs)
 
         return wrapped
@@ -157,7 +264,8 @@ def _serialized_bind(function):
         project_root = Path(_require_text(project_snapshot.get("project_root"), "project root"))
         if _is_within(workspace_path, project_root) or _is_within(project_root, workspace_path):
             raise AuditError("audit workspace must be outside the bound Git project")
-        with _workspace_write_lock(workspace_path):
+        with _workspace_advisory_lock(workspace_path, exclusive=True):
+            _assert_no_pending_commit(workspace_path)
             return function(project, workspace, *args, **kwargs)
 
     return wrapped
@@ -525,6 +633,11 @@ def _write_pending_commit(workspace: Path, body: dict[str, object]) -> None:
     _atomic_write_text(path, content)
 
 
+def _pending_content_hash(manifest: dict[str, object]) -> str:
+    bound = {key: value for key, value in manifest.items() if key != "content_sha256"}
+    return hashlib.sha256(_canonical_json(bound).encode("utf-8")).hexdigest()
+
+
 def _read_pending_commit(workspace: Path) -> dict[str, object] | None:
     path = _pending_commit_path(workspace)
     if not _pending_commit_exists(workspace):
@@ -532,7 +645,13 @@ def _read_pending_commit(workspace: Path) -> dict[str, object] | None:
     manifest = _read_json_object(
         path, "pending audit commit", maximum_bytes=MAX_PENDING_COMMIT_BYTES
     )
-    expected_keys = {
+    schema_version = manifest.get("schema_version")
+    if type(schema_version) is not int or schema_version not in {
+        LEGACY_PENDING_COMMIT_SCHEMA_VERSION,
+        PENDING_COMMIT_SCHEMA_VERSION,
+    }:
+        raise AuditError("pending audit commit schema version is not supported")
+    common_keys = {
         "schema_version",
         "transaction_id",
         "snapshot_path",
@@ -540,13 +659,17 @@ def _read_pending_commit(workspace: Path) -> dict[str, object] | None:
         "snapshot_after",
         "event",
     }
+    if schema_version == LEGACY_PENDING_COMMIT_SCHEMA_VERSION:
+        expected_keys = common_keys
+    else:
+        expected_keys = common_keys | {
+            "snapshot_after_sha256",
+            "event_log_before_sha256",
+            "event_log_after_sha256",
+            "content_sha256",
+        }
     if set(manifest) != expected_keys:
         raise AuditError("pending audit commit has an unexpected schema")
-    if (
-        type(manifest.get("schema_version")) is not int
-        or manifest.get("schema_version") != PENDING_COMMIT_SCHEMA_VERSION
-    ):
-        raise AuditError("pending audit commit schema version is not supported")
     _require_text(manifest.get("transaction_id"), "pending commit transaction_id")
     _validate_snapshot_relative_path(manifest.get("snapshot_path"))
     _valid_sha256_or_none(
@@ -556,6 +679,32 @@ def _read_pending_commit(workspace: Path) -> dict[str, object] | None:
         raise AuditError("pending commit snapshot after-image is invalid")
     if not isinstance(manifest.get("event"), dict):
         raise AuditError("pending commit event is invalid")
+    if schema_version == PENDING_COMMIT_SCHEMA_VERSION:
+        snapshot_after_hash = _valid_sha256_or_none(
+            manifest.get("snapshot_after_sha256"), "snapshot after hash"
+        )
+        if snapshot_after_hash is None:
+            raise AuditError("pending commit snapshot after hash is invalid")
+        _valid_sha256_or_none(
+            manifest.get("event_log_before_sha256"), "event log before hash"
+        )
+        event_log_after_hash = _valid_sha256_or_none(
+            manifest.get("event_log_after_sha256"), "event log after hash"
+        )
+        if event_log_after_hash is None:
+            raise AuditError("pending commit event log after hash is invalid")
+        content_hash = _valid_sha256_or_none(
+            manifest.get("content_sha256"), "content hash"
+        )
+        if content_hash is None or content_hash != _pending_content_hash(manifest):
+            raise AuditError("pending commit content hash does not match its intent")
+        snapshot_text = _json_snapshot_text(
+            manifest["snapshot_after"], "pending commit snapshot"
+        )
+        if _sha256_text(snapshot_text) != snapshot_after_hash:
+            raise AuditError(
+                "pending commit snapshot after hash does not match its after-image"
+            )
     return manifest
 
 
@@ -582,10 +731,22 @@ def _build_event_update(
     actor: str,
     payload: dict[str, object],
     allow_missing: bool = False,
-) -> tuple[dict[str, object], list[dict[str, object]], str]:
+) -> tuple[dict[str, object], list[dict[str, object]], str | None, str]:
     """Build and bound a prospective event-log update without writing it."""
 
-    events = _read_events(workspace, allow_missing=allow_missing)
+    event_log_before = _optional_regular_text(
+        workspace / EVENT_LOG_NAME,
+        "event log",
+        maximum_bytes=MAX_EVENT_LOG_BYTES,
+    )
+    if event_log_before is None:
+        if not allow_missing:
+            raise AuditError(f"missing regular event log: {workspace / EVENT_LOG_NAME}")
+        events: list[dict[str, object]] = []
+    else:
+        if allow_missing:
+            raise AuditError("pending bind requires the event log to be absent")
+        events = _parse_events_text(event_log_before)
     if len(events) >= MAX_EVENTS:
         raise AuditError(f"event log has reached the {MAX_EVENTS}-event limit")
     previous_hash = events[-1]["event_hash"] if events else None
@@ -601,7 +762,7 @@ def _build_event_update(
     event = {**body, "event_hash": _event_hash(body)}
     updated_events = [*events, event]
     event_log_text = _event_log_text(updated_events)
-    return event, updated_events, event_log_text
+    return event, updated_events, event_log_before, event_log_text
 
 
 def _run_git(project: Path, *arguments: str) -> str:
@@ -646,6 +807,28 @@ def inspect_clean_project(project: str | Path) -> dict[str, object]:
     return copy.deepcopy(_git_snapshot(project, require_clean=True))
 
 
+def _assert_workspace_project_separation(
+    workspace: Path, lifecycle: dict[str, object]
+) -> Path:
+    """Revalidate the bound Git root and require both roots to remain non-nested."""
+
+    current_workspace = _existing_directory(workspace, "audit workspace")
+    project = lifecycle.get("project")
+    if not isinstance(project, dict):
+        raise AuditError("audit lifecycle project is invalid")
+    stored_root_text = _require_text(project.get("root"), "project root")
+    stored_root = _existing_directory(stored_root_text, "bound Git project")
+    canonical_root_text = _run_git(stored_root, "rev-parse", "--show-toplevel")
+    canonical_root = _existing_directory(canonical_root_text, "bound Git project root")
+    if str(canonical_root) != stored_root_text:
+        raise AuditError("stored project root does not match the current canonical Git root")
+    if _is_within(current_workspace, canonical_root) or _is_within(
+        canonical_root, current_workspace
+    ):
+        raise AuditError("audit workspace must remain outside the bound Git project")
+    return canonical_root
+
+
 def _validate_public_workspace(
     workspace_value: str | Path, *, allow_pending: bool = False
 ) -> tuple[Path, dict[str, object]]:
@@ -676,6 +859,12 @@ def _assert_research_contract_complete(workspace: Path) -> None:
         ).decode("utf-8")
     except UnicodeDecodeError as error:
         raise AuditError(f"could not read public research contract: {error.__class__.__name__}") from error
+    if LEGACY_CONTRACT_DECISION_PATTERN.search(contract):
+        raise AuditError(
+            "G0 research contract uses legacy duplicate decision fields; remove the "
+            "Status and final Human gate decision fields, then record the authoritative "
+            "decision with `audit gate record`"
+        )
     heading_matches = list(MARKDOWN_HEADING_PATTERN.finditer(contract))
     headings = {
         match.group(1).strip().rstrip("#").strip() for match in heading_matches
@@ -729,6 +918,9 @@ def _lifecycle_from_metadata(metadata: dict[str, object]) -> dict[str, object]:
         raise AuditError("audit lifecycle findings directory is not recognized")
     if lifecycle.get("event_log") != EVENT_LOG_NAME:
         raise AuditError("audit lifecycle event log is not recognized")
+    projection_mode = lifecycle.get("event_projection_mode")
+    if projection_mode not in (None, LIFECYCLE_PROJECTION_MODE):
+        raise AuditError("audit lifecycle event projection mode is not recognized")
 
     project = lifecycle.get("project")
     baseline = lifecycle.get("baseline")
@@ -760,7 +952,20 @@ def _load_bound_workspace(
         workspace_value, allow_pending=allow_pending
     )
     lifecycle = _lifecycle_from_metadata(metadata)
+    _assert_workspace_project_separation(workspace, lifecycle)
     return workspace, metadata, lifecycle
+
+
+@_serialized_workspace_read(0)
+def validate_bound_workspace_separation(
+    workspace_value: str | Path,
+) -> dict[str, str]:
+    """Validate and expose the canonical roots for a bound public workspace."""
+
+    workspace, metadata = _validate_public_workspace(workspace_value)
+    lifecycle = _lifecycle_from_metadata(metadata)
+    project_root = _assert_workspace_project_separation(workspace, lifecycle)
+    return {"workspace": str(workspace), "project_root": str(project_root)}
 
 
 def _finding_path(workspace: Path, finding_id: str) -> Path:
@@ -955,27 +1160,140 @@ def _verify_finding_event_hashes(
             raise AuditError(f"finding has no lifecycle hash event: {finding_id}")
 
 
+def _lifecycle_event_payload(metadata: dict[str, object]) -> dict[str, object]:
+    """Build the only authoritative payload shape for a new lifecycle event."""
+
+    lifecycle = _lifecycle_from_metadata(metadata)
+    if lifecycle.get("event_projection_mode") != LIFECYCLE_PROJECTION_MODE:
+        raise AuditError("new lifecycle events require a full lifecycle projection")
+    return {
+        "metadata_sha256": _metadata_hash(metadata),
+        "lifecycle_projection": copy.deepcopy(lifecycle),
+    }
+
+
+def _validated_lifecycle_projection(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise AuditError("workspace lifecycle event projection must be an object")
+    projection = _lifecycle_from_metadata(
+        {"schema_version": SCHEMA_VERSION, "audit_lifecycle": value}
+    )
+    if projection.get("event_projection_mode") != LIFECYCLE_PROJECTION_MODE:
+        raise AuditError("workspace lifecycle event projection mode is invalid")
+    return projection
+
+
+def _validate_projection_transition(
+    previous: dict[str, object] | None,
+    current: dict[str, object],
+    event_type: str,
+) -> None:
+    """Validate projected lifecycle changes after the first projection anchor."""
+
+    gate = current.get("g0_gate")
+    if event_type == "workspace_bound":
+        if previous is not None:
+            raise AuditError("workspace_bound cannot replace an existing lifecycle projection")
+        if not isinstance(gate, dict) or gate.get("status") != "draft":
+            raise AuditError("workspace_bound lifecycle projection must start with G0 draft")
+        return
+    if previous is None:
+        # A legacy v2 chain becomes strict at its first projected lifecycle event.
+        if event_type == "baseline_replaced" and (
+            not isinstance(gate, dict) or gate.get("status") != "draft"
+        ):
+            raise AuditError(
+                "baseline_replaced lifecycle projection must reset G0 to draft"
+            )
+        return
+    if event_type == "g0_gate_set":
+        prior_fixed = {key: value for key, value in previous.items() if key != "g0_gate"}
+        current_fixed = {key: value for key, value in current.items() if key != "g0_gate"}
+        if current_fixed != prior_fixed:
+            raise AuditError("g0_gate_set lifecycle projection may change only the G0 gate")
+        return
+    if event_type == "baseline_replaced":
+        prior_fixed = {
+            key: value
+            for key, value in previous.items()
+            if key not in {"baseline", "g0_gate"}
+        }
+        current_fixed = {
+            key: value
+            for key, value in current.items()
+            if key not in {"baseline", "g0_gate"}
+        }
+        if current_fixed != prior_fixed:
+            raise AuditError(
+                "baseline_replaced lifecycle projection may change only baseline and G0 gate"
+            )
+        prior_baseline = previous.get("baseline")
+        current_baseline = current.get("baseline")
+        if (
+            not isinstance(prior_baseline, dict)
+            or not isinstance(current_baseline, dict)
+            or current_baseline.get("id") == prior_baseline.get("id")
+        ):
+            raise AuditError("baseline_replaced lifecycle projection requires a new baseline id")
+        if not isinstance(gate, dict) or gate.get("status") != "draft":
+            raise AuditError("baseline_replaced lifecycle projection must reset G0 to draft")
+
+
 def _verify_metadata_event_hash(
     metadata: dict[str, object], events: list[dict[str, object]]
 ) -> None:
-    """Tie current mutable metadata to its most recent lifecycle event."""
+    """Tie metadata to legacy hashes or to a strictly replayable projection chain."""
 
-    lifecycle_event_types = {"workspace_bound", "g0_gate_set", "baseline_replaced"}
+    lifecycle = _lifecycle_from_metadata(metadata)
+    projection_mode = lifecycle.get("event_projection_mode")
+    projection_started = False
+    previous_projection: dict[str, object] | None = None
+    latest_projection: dict[str, object] | None = None
     latest_hash: str | None = None
     for event in events:
-        if event.get("event_type") not in lifecycle_event_types:
-            continue
+        event_type = event.get("event_type")
         payload = event.get("payload")
         if not isinstance(payload, dict):
             raise AuditError("workspace lifecycle event payload is invalid")
+        has_projection = "lifecycle_projection" in payload
+        if event_type not in LIFECYCLE_EVENT_TYPES:
+            if has_projection:
+                raise AuditError("non-lifecycle event must not contain a lifecycle projection")
+            continue
         recorded_hash = payload.get("metadata_sha256")
         if not isinstance(recorded_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", recorded_hash):
             raise AuditError("workspace lifecycle event has an invalid metadata_sha256")
         latest_hash = recorded_hash
+        if not has_projection:
+            if projection_started:
+                raise AuditError(
+                    "lifecycle event is missing the required full lifecycle projection"
+                )
+            continue
+        if set(payload) != {"metadata_sha256", "lifecycle_projection"}:
+            raise AuditError("projected lifecycle event payload has an unexpected schema")
+        projection = _validated_lifecycle_projection(payload["lifecycle_projection"])
+        projected_metadata = copy.deepcopy(metadata)
+        projected_metadata["audit_lifecycle"] = copy.deepcopy(projection)
+        if _metadata_hash(projected_metadata) != recorded_hash:
+            raise AuditError(
+                "lifecycle projection does not match its recorded metadata snapshot"
+            )
+        _validate_projection_transition(previous_projection, projection, str(event_type))
+        projection_started = True
+        previous_projection = projection
+        latest_projection = projection
     if latest_hash is None:
         raise AuditError("event log has no workspace metadata snapshot")
     if _metadata_hash(metadata) != latest_hash:
         raise AuditError("workspace metadata hash does not match its latest lifecycle event")
+    if projection_mode == LIFECYCLE_PROJECTION_MODE:
+        if latest_projection is None:
+            raise AuditError("audit lifecycle requires a full lifecycle event projection")
+        if latest_projection != lifecycle:
+            raise AuditError(
+                "latest lifecycle event projection does not match current metadata"
+            )
 
 
 def _verify_event_semantics(
@@ -1053,12 +1371,13 @@ def _verify_prospective_commit(
     events: list[dict[str, object]],
     *,
     binding: bool,
-) -> None:
+) -> dict[str, object]:
     if snapshot_path == WORKSPACE_METADATA_NAME:
         metadata = snapshot
     else:
         _, metadata = _validate_public_workspace(workspace, allow_pending=True)
-    _lifecycle_from_metadata(metadata)
+    lifecycle = _lifecycle_from_metadata(metadata)
+    _assert_workspace_project_separation(workspace, lifecycle)
     findings = [] if binding else _load_findings(workspace)
     if snapshot_path != WORKSPACE_METADATA_NAME:
         finding_id = Path(snapshot_path).stem
@@ -1069,6 +1388,7 @@ def _verify_prospective_commit(
     _verify_metadata_event_hash(metadata, events)
     _verify_finding_event_hashes(findings, events)
     _verify_event_semantics(findings, events)
+    return lifecycle
 
 
 def _ensure_empty_findings_directory(workspace: Path) -> None:
@@ -1108,20 +1428,28 @@ def _commit_lifecycle_change(
 
     _assert_no_pending_commit(workspace)
     snapshot_relative_path = _validate_snapshot_relative_path(snapshot_relative_path)
+    if event_type in LIFECYCLE_EVENT_TYPES:
+        if snapshot_relative_path != WORKSPACE_METADATA_NAME:
+            raise AuditError("lifecycle events must commit the workspace metadata snapshot")
+        expected_payload = _lifecycle_event_payload(snapshot_payload)
+        if event_payload != expected_payload:
+            raise AuditError(
+                "lifecycle event payload does not match its prospective metadata projection"
+            )
     snapshot_label = (
         "audit workspace metadata"
         if snapshot_relative_path == WORKSPACE_METADATA_NAME
         else "finding"
     )
     snapshot_text = _json_snapshot_text(snapshot_payload, snapshot_label)
-    event, events, event_log_text = _build_event_update(
+    event, events, event_log_before, event_log_text = _build_event_update(
         workspace,
         event_type=event_type,
         actor=actor,
         payload=event_payload,
         allow_missing=binding,
     )
-    _verify_prospective_commit(
+    prospective_lifecycle = _verify_prospective_commit(
         workspace,
         snapshot_relative_path,
         snapshot_payload,
@@ -1152,9 +1480,16 @@ def _commit_lifecycle_change(
             _sha256_text(snapshot_before) if snapshot_before is not None else None
         ),
         "snapshot_after": snapshot_payload,
+        "snapshot_after_sha256": _sha256_text(snapshot_text),
+        "event_log_before_sha256": (
+            _sha256_text(event_log_before) if event_log_before is not None else None
+        ),
+        "event_log_after_sha256": _sha256_text(event_log_text),
         "event": event,
     }
+    pending_body["content_sha256"] = _pending_content_hash(pending_body)
     try:
+        _assert_workspace_project_separation(workspace, prospective_lifecycle)
         _write_pending_commit(workspace, pending_body)
         if binding:
             _ensure_empty_findings_directory(workspace)
@@ -1229,12 +1564,17 @@ def bind_audit(
     upgraded["audit_lifecycle"] = {
         "schema_version": SCHEMA_VERSION,
         "validator_scope": "integrity_only",
+        "event_projection_mode": LIFECYCLE_PROJECTION_MODE,
         "project": {"root": project_snapshot["project_root"]},
         "baseline": baseline,
         "g0_gate": gate,
         "findings_directory": FINDINGS_DIRECTORY_NAME,
         "event_log": EVENT_LOG_NAME,
     }
+    upgraded_lifecycle = upgraded["audit_lifecycle"]
+    if not isinstance(upgraded_lifecycle, dict):
+        raise AuditError("audit lifecycle is not writable")
+    _assert_workspace_project_separation(workspace_path, upgraded_lifecycle)
 
     _commit_lifecycle_change(
         workspace_path,
@@ -1242,16 +1582,7 @@ def bind_audit(
         snapshot_payload=upgraded,
         event_type="workspace_bound",
         actor=actor,
-        event_payload={
-            "project_root": project_snapshot["project_root"],
-            "baseline_head": project_snapshot["head"],
-            "baseline_id": baseline["id"],
-            "baseline_branch": project_snapshot["branch"],
-            "g0_status": "draft",
-            "rationale": rationale,
-            "metadata_sha256": _metadata_hash(upgraded),
-            "contract_sha256": gate["contract_sha256"],
-        },
+        event_payload=_lifecycle_event_payload(upgraded),
         binding=True,
     )
     return copy.deepcopy(upgraded)
@@ -1276,8 +1607,14 @@ def set_g0_gate(
     reviewer = _require_text(reviewer, "reviewer")
     rationale = _require_text(rationale, "rationale")
     actor = _require_text(actor, "actor")
-    workspace_path, metadata, lifecycle = _load_bound_workspace(workspace)
-    verify_audit_workspace(workspace_path)
+    (
+        workspace_path,
+        metadata,
+        lifecycle,
+        _,
+        _,
+        _,
+    ) = _verified_audit_snapshot(workspace)
     if canonical_status == "approved":
         _assert_research_contract_complete(workspace_path)
     updated = copy.deepcopy(metadata)
@@ -1295,28 +1632,23 @@ def set_g0_gate(
         ),
     }
     updated_lifecycle["g0_gate"] = gate
+    updated_lifecycle["event_projection_mode"] = LIFECYCLE_PROJECTION_MODE
     _commit_lifecycle_change(
         workspace_path,
         snapshot_relative_path=WORKSPACE_METADATA_NAME,
         snapshot_payload=updated,
         event_type="g0_gate_set",
         actor=actor,
-        event_payload={
-            "status": canonical_status,
-            "reviewer": reviewer,
-            "rationale": rationale,
-            "metadata_sha256": _metadata_hash(updated),
-            "contract_sha256": gate["contract_sha256"],
-        },
+        event_payload=_lifecycle_event_payload(updated),
     )
     return copy.deepcopy(gate)
 
 
+@_serialized_workspace_read(0)
 def assess_g0_gate(workspace: str | Path) -> dict[str, object]:
     """Assess declared G0 structure and decision freshness without mutating it."""
 
-    workspace_path, _, lifecycle = _load_bound_workspace(workspace)
-    verify_audit_workspace(workspace_path)
+    workspace_path, _, lifecycle, _, _, _ = _verified_audit_snapshot(workspace)
     gate = lifecycle.get("g0_gate")
     if not isinstance(gate, dict):
         raise AuditError("G0 gate metadata is invalid")
@@ -1343,7 +1675,7 @@ def assess_g0_gate(workspace: str | Path) -> dict[str, object]:
         "declared_status": gate.get("status"),
         "declared_reviewer": gate.get("reviewer"),
         "decision_matches_contract": decision_current,
-        "ready_for_preflight": ready,
+        "g0_prerequisites_met": ready,
         "limitation": (
             "This is a declared human decision and structural check, not identity "
             "authentication or scientific approval."
@@ -1352,11 +1684,18 @@ def assess_g0_gate(workspace: str | Path) -> dict[str, object]:
     return report
 
 
+@_serialized_workspace_read(0)
 def preflight(workspace: str | Path) -> dict[str, object]:
     """Require a clean, unchanged baseline and an approved G0 gate before work."""
 
-    verify_audit_workspace(workspace)
-    _, _, lifecycle = _load_bound_workspace(workspace)
+    (
+        workspace_path,
+        _,
+        lifecycle,
+        _,
+        current_contract_hash,
+        _,
+    ) = _verified_audit_snapshot(workspace)
     gate = lifecycle["g0_gate"]
     baseline = lifecycle["baseline"]
     project = lifecycle["project"]
@@ -1364,11 +1703,8 @@ def preflight(workspace: str | Path) -> dict[str, object]:
         raise AuditError("G0 gate must be approved before preflight can pass")
     if not isinstance(baseline, dict) or not isinstance(project, dict):
         raise AuditError("audit lifecycle baseline is invalid")
+    _assert_research_contract_complete(workspace_path)
     expected_contract_hash = gate.get("contract_sha256")
-    current_contract_hash = _file_sha256(
-        _existing_directory(workspace, "audit workspace") / "research-contract-template.md",
-        "public research contract",
-    )
     if current_contract_hash != expected_contract_hash:
         raise AuditError(
             "G0 research contract changed after the recorded decision; record a new gate decision"
@@ -1394,8 +1730,7 @@ def rebaseline(workspace: str | Path, *, actor: str, reason: str) -> dict[str, o
 
     actor = _require_text(actor, "actor")
     reason = _require_text(reason, "reason")
-    workspace_path, metadata, lifecycle = _load_bound_workspace(workspace)
-    verify_audit_workspace(workspace_path)
+    workspace_path, metadata, lifecycle, _, _, _ = _verified_audit_snapshot(workspace)
     project = lifecycle["project"]
     if not isinstance(project, dict):
         raise AuditError("audit lifecycle project is invalid")
@@ -1413,7 +1748,6 @@ def rebaseline(workspace: str | Path, *, actor: str, reason: str) -> dict[str, o
     updated_lifecycle = updated["audit_lifecycle"]
     if not isinstance(updated_lifecycle, dict):
         raise AuditError("audit lifecycle is not writable")
-    previous_baseline = updated_lifecycle.get("baseline")
     updated_lifecycle["baseline"] = baseline
     updated_lifecycle["g0_gate"] = {
         "status": "draft",
@@ -1425,23 +1759,14 @@ def rebaseline(workspace: str | Path, *, actor: str, reason: str) -> dict[str, o
             workspace_path / "research-contract-template.md", "public research contract"
         ),
     }
+    updated_lifecycle["event_projection_mode"] = LIFECYCLE_PROJECTION_MODE
     _commit_lifecycle_change(
         workspace_path,
         snapshot_relative_path=WORKSPACE_METADATA_NAME,
         snapshot_payload=updated,
         event_type="baseline_replaced",
         actor=actor,
-        event_payload={
-            "reason": reason,
-            "previous_head": previous_baseline.get("head") if isinstance(previous_baseline, dict) else None,
-            "previous_baseline_id": previous_baseline.get("id") if isinstance(previous_baseline, dict) else None,
-            "new_baseline_id": baseline["id"],
-            "new_head": current["head"],
-            "new_branch": current["branch"],
-            "g0_status": "draft",
-            "metadata_sha256": _metadata_hash(updated),
-            "contract_sha256": updated_lifecycle["g0_gate"]["contract_sha256"],
-        },
+        event_payload=_lifecycle_event_payload(updated),
     )
     return copy.deepcopy(baseline)
 
@@ -1465,13 +1790,20 @@ def add_finding(
     :func:`preflight` is mandatory before it is recorded.
     """
 
-    workspace_path, _, lifecycle = _load_bound_workspace(workspace)
-    preflight(workspace_path)
+    (
+        workspace_path,
+        _,
+        lifecycle,
+        existing_findings,
+        contract_sha256,
+        _,
+    ) = _verified_audit_snapshot(workspace)
+    _preflight_from_snapshot(workspace_path, lifecycle, contract_sha256)
     finding_id = _require_text(finding_id, "finding_id")
     path = _finding_path(workspace_path, finding_id)
     if path.is_symlink() or path.exists():
         raise AuditError(f"finding already exists: {finding_id}")
-    if len(_load_findings(workspace_path)) >= MAX_FINDINGS:
+    if len(existing_findings) >= MAX_FINDINGS:
         raise AuditError(f"findings would exceed the {MAX_FINDINGS}-finding limit")
     if layer not in LAYERS:
         raise AuditError(f"layer must be one of: {', '.join(LAYERS)}")
@@ -1524,11 +1856,12 @@ def add_finding(
     return copy.deepcopy(finding)
 
 
+@_serialized_workspace_read(0)
 def list_findings(workspace: str | Path) -> list[dict[str, object]]:
     """Return schema-validated findings in stable filename order."""
 
-    workspace_path, _, _ = _load_bound_workspace(workspace)
-    return copy.deepcopy(_load_findings(workspace_path))
+    _, _, _, findings, _, _ = _verified_audit_snapshot(workspace)
+    return copy.deepcopy(findings)
 
 
 @_serialized_workspace_mutation(0)
@@ -1544,8 +1877,15 @@ def add_evidence(
 ) -> dict[str, object]:
     """Append evidence against the current approved baseline without judging truth."""
 
-    workspace_path, _, lifecycle = _load_bound_workspace(workspace)
-    preflight(workspace_path)
+    (
+        workspace_path,
+        _,
+        lifecycle,
+        existing_findings,
+        contract_sha256,
+        _,
+    ) = _verified_audit_snapshot(workspace)
+    _preflight_from_snapshot(workspace_path, lifecycle, contract_sha256)
     finding = _load_finding(workspace_path, finding_id)
     if not _finding_matches_current_baseline(finding, lifecycle):
         raise AuditError(
@@ -1563,9 +1903,7 @@ def add_evidence(
             f"finding {finding_id} would exceed the "
             f"{MAX_EVIDENCE_PER_FINDING}-evidence limit"
         )
-    total_evidence = sum(
-        len(item["evidence"]) for item in _load_findings(workspace_path)
-    )
+    total_evidence = sum(len(item["evidence"]) for item in existing_findings)
     if total_evidence >= MAX_TOTAL_EVIDENCE:
         raise AuditError(
             f"findings would exceed the {MAX_TOTAL_EVIDENCE}-evidence aggregate limit"
@@ -1615,20 +1953,27 @@ def transition_finding(
     """Apply one legal, explicitly explained finding-state transition.
 
     Non-terminal transitions remain available without :func:`preflight` so a
-    reviewer can triage a changing project. Moving to ``verified`` or ``closed``
-    requires recorded evidence, the current baseline snapshot, and a clean,
-    approved preflight.
+    reviewer can triage a changing project. The serialized ``verified`` and
+    ``closed`` labels are declared lifecycle states: entering them requires
+    recorded evidence, the current baseline snapshot, and a clean, approved
+    preflight, but does not establish independent or scientific verification.
     """
 
-    workspace_path, _, lifecycle = _load_bound_workspace(workspace)
-    verify_audit_workspace(workspace_path)
+    (
+        workspace_path,
+        _,
+        lifecycle,
+        _,
+        contract_sha256,
+        _,
+    ) = _verified_audit_snapshot(workspace)
     finding = _load_finding(workspace_path, finding_id)
     actor = _require_text(actor, "actor")
     rationale = _require_text(rationale, "rationale")
     current_status = finding.get("status")
     if not isinstance(current_status, str) or new_status not in FINDING_TRANSITIONS.get(current_status, set()):
         raise AuditError(f"illegal finding transition: {current_status} -> {new_status}")
-    if new_status in TRUSTED_TERMINAL_STATUSES:
+    if new_status in EVIDENCE_GATED_STATUSES:
         evidence = finding.get("evidence")
         if not isinstance(evidence, list) or not evidence:
             raise AuditError(f"{new_status} requires at least one recorded evidence item")
@@ -1637,7 +1982,7 @@ def transition_finding(
                 f"{new_status} requires a finding created against the current baseline; "
                 "create a new finding ID after rebaseline"
             )
-        preflight(workspace_path)
+        _preflight_from_snapshot(workspace_path, lifecycle, contract_sha256)
     finding["status"] = new_status
     finding["actor"] = actor
     finding["updated_at"] = _utc_now()
@@ -1713,6 +2058,7 @@ def _verified_audit_snapshot(
     )
 
 
+@_serialized_workspace_read(0)
 def verify_audit_workspace(workspace: str | Path) -> dict[str, object]:
     """Verify public metadata and local hash-chain consistency only.
 
@@ -1743,7 +2089,7 @@ def _restore_after_image(
         _atomic_write_text(path, after_text)
 
 
-@_serialized_workspace_mutation(0)
+@_serialized_workspace_mutation(0, allow_pending=True)
 def recover_audit(workspace: str | Path) -> dict[str, object]:
     """Idempotently roll a durable pending lifecycle commit forward."""
 
@@ -1767,7 +2113,40 @@ def recover_audit(workspace: str | Path) -> dict[str, object]:
         raise AuditError("pending commit after-images are invalid")
     snapshot_after = _json_snapshot_text(snapshot_payload, "pending commit snapshot")
     binding = event.get("event_type") == "workspace_bound"
-    current_events = _read_events(workspace_path, allow_missing=binding)
+    current_event_text = _optional_regular_text(
+        workspace_path / EVENT_LOG_NAME,
+        "event log",
+        maximum_bytes=MAX_EVENT_LOG_BYTES,
+    )
+    current_event_hash = (
+        _sha256_text(current_event_text) if current_event_text is not None else None
+    )
+    if current_event_text is None:
+        if not binding:
+            raise AuditError(f"missing regular event log: {workspace_path / EVENT_LOG_NAME}")
+        current_events: list[dict[str, object]] = []
+    else:
+        if (
+            manifest.get("schema_version") == LEGACY_PENDING_COMMIT_SCHEMA_VERSION
+            and binding
+            and current_event_text == ""
+        ):
+            raise AuditError(
+                "legacy pending bind cannot treat a zero-byte event log as a missing file"
+            )
+        current_events = _parse_events_text(current_event_text)
+    if manifest.get("schema_version") == PENDING_COMMIT_SCHEMA_VERSION:
+        event_before_hash = _valid_sha256_or_none(
+            manifest.get("event_log_before_sha256"), "event log before hash"
+        )
+        event_after_hash = _valid_sha256_or_none(
+            manifest.get("event_log_after_sha256"), "event log after hash"
+        )
+        if current_event_hash not in {event_before_hash, event_after_hash}:
+            raise AuditError(
+                "pending commit cannot recover event log: current content is neither "
+                "the recorded before-image nor after-image"
+            )
     sequence = event.get("seq")
     if type(sequence) is not int or sequence < 1:
         raise AuditError("pending commit event sequence is invalid")
@@ -1780,9 +2159,16 @@ def recover_audit(workspace: str | Path) -> dict[str, object]:
     else:
         raise AuditError("pending commit does not extend the current event log")
     event_log_after = _event_log_text(events)
+    if (
+        manifest.get("schema_version") == PENDING_COMMIT_SCHEMA_VERSION
+        and _sha256_text(event_log_after) != manifest.get("event_log_after_sha256")
+    ):
+        raise AuditError(
+            "pending commit event log after hash does not match its reconstructed after-image"
+        )
     if binding and snapshot_relative_path != WORKSPACE_METADATA_NAME:
         raise AuditError("pending commit binding target is invalid")
-    _verify_prospective_commit(
+    prospective_lifecycle = _verify_prospective_commit(
         workspace_path,
         snapshot_relative_path,
         snapshot_payload,
@@ -1795,6 +2181,7 @@ def recover_audit(workspace: str | Path) -> dict[str, object]:
     else:
         snapshot_path = _snapshot_target(workspace_path, snapshot_relative_path)
     try:
+        _assert_workspace_project_separation(workspace_path, prospective_lifecycle)
         if binding:
             _ensure_empty_findings_directory(workspace_path)
         _restore_after_image(
@@ -1837,6 +2224,7 @@ def _preflight_from_snapshot(
         raise AuditError("G0 gate must be approved before preflight can pass")
     if not isinstance(baseline, dict) or not isinstance(project, dict):
         raise AuditError("audit lifecycle baseline is invalid")
+    _assert_research_contract_complete(workspace_path)
     if contract_sha256 != gate.get("contract_sha256"):
         raise AuditError(
             "G0 research contract changed after the recorded decision; record a new gate decision"
@@ -1858,7 +2246,7 @@ def _preflight_from_snapshot(
     }
 
 
-def build_report_data(workspace: str | Path) -> dict[str, object]:
+def _build_report_data_locked(workspace: str | Path) -> dict[str, object]:
     """Return report-ready data without creating or modifying any file."""
 
     (
@@ -1896,9 +2284,9 @@ def build_report_data(workspace: str | Path) -> dict[str, object]:
         1 for finding in report_findings if not finding["baseline_current"]
     )
     report_status = (
-        "review-ready"
+        "preflight-current"
         if preflight_result is not None and stale_finding_count == 0
-        else "draft"
+        else "preflight-not-current"
     )
     report: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
@@ -1906,6 +2294,7 @@ def build_report_data(workspace: str | Path) -> dict[str, object]:
         "report_status": report_status,
         "limitations": [
             "Local hash-chain consistency is not external immutability or identity authentication.",
+            "The verified and closed finding values are declared lifecycle labels, not independent verification or scientific approval.",
             "Recorded evidence and human declarations are not automatically judged for scientific correctness.",
             "No audited-project code is executed and no network resource is fetched by this report builder.",
         ],
@@ -1926,6 +2315,13 @@ def build_report_data(workspace: str | Path) -> dict[str, object]:
         "findings": report_findings,
     }
     return report
+
+
+@_serialized_workspace_read(0)
+def build_report_data(workspace: str | Path) -> dict[str, object]:
+    """Return one report projection while holding a shared workspace lock."""
+
+    return _build_report_data_locked(workspace)
 
 
 _MARKDOWN_TEXT_ESCAPES = str.maketrans(
@@ -1952,10 +2348,11 @@ def _markdown_cell(value: object) -> str:
     return _markdown_text(value)
 
 
+@_serialized_workspace_read(0)
 def render_report_markdown(workspace: str | Path) -> str:
     """Render a Markdown view of :func:`build_report_data` without writing it."""
 
-    report = build_report_data(workspace)
+    report = _build_report_data_locked(workspace)
     project = report["project"]
     baseline = report["baseline"]
     gate = report["g0_gate"]
@@ -1967,7 +2364,7 @@ def render_report_markdown(workspace: str | Path) -> str:
     lines = [
         "# Research Code Stewardship Audit Report",
         "",
-        f"> Report status: **{str(report.get('report_status')).upper()}**. This status describes record readiness only; it does not declare scientific correctness, legal compliance, or deployment readiness.",
+        f"> Report status: **{str(report.get('report_status')).upper()}**. This status describes preflight and current-record state only; it does not declare scientific correctness, legal compliance, or deployment readiness.",
         "",
         "## Bound project",
         "",
@@ -1975,19 +2372,19 @@ def render_report_markdown(workspace: str | Path) -> str:
         f"- Baseline ID: {_markdown_code(baseline.get('id'))}",
         f"- Baseline HEAD: {_markdown_code(baseline.get('head'))}",
         f"- Baseline branch: {_markdown_code(baseline.get('branch'))}",
-        f"- G0 gate: **{_markdown_text(gate.get('status'))}** — reviewer: {_markdown_text(gate.get('reviewer'))}",
+        f"- G0 declared gate: **{_markdown_text(gate.get('status'))}** — reviewer: {_markdown_text(gate.get('reviewer'))}",
         f"- Preflight issue: {_markdown_text(report.get('preflight_issue') or 'None recorded')}",
         "",
         "## Finding summary",
         "",
         f"- Total findings: {summary.get('finding_count')}",
         f"- Findings from an older baseline: {summary.get('stale_finding_count')}",
-        f"- By status: {summary.get('by_status')}",
+        f"- By declared lifecycle state: {summary.get('by_status')}",
         f"- By severity: {summary.get('by_severity')}",
         "",
         "## Findings",
         "",
-        "| ID | Layer | Competency | Severity | Status | Baseline | Title |",
+        "| ID | Layer | Competency | Severity | Declared lifecycle state | Baseline | Title |",
         "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     findings = report["findings"]

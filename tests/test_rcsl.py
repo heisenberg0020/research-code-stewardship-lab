@@ -385,11 +385,16 @@ class DualModeCliTests(unittest.TestCase):
         self.assertEqual(recovery.returncode, 0, recovery.stderr)
         recovery_payload = json.loads(recovery.stdout)
         self.assertEqual(recovery_payload["operation_status"], "clean")
+        self.assertEqual(
+            recovery_payload["assessment_status"], "local-records-consistent"
+        )
         self.assertFalse(recovery_payload["recovery"]["recovered"])
 
         gate_check = run_cli("audit", "gate", "check", str(self.workspace), "--json")
         self.assertEqual(gate_check.returncode, 1, gate_check.stderr)
-        self.assertEqual(json.loads(gate_check.stdout)["assessment_status"], "needs-human-decision")
+        gate_check_payload = json.loads(gate_check.stdout)
+        self.assertEqual(gate_check_payload["assessment_status"], "needs-human-decision")
+        self.assertFalse(gate_check_payload["g0"]["g0_prerequisites_met"])
 
         gate_record = run_cli(
             "audit",
@@ -405,11 +410,19 @@ class DualModeCliTests(unittest.TestCase):
         )
         self.assertEqual(gate_record.returncode, 0, gate_record.stderr)
 
+        gate_check = run_cli("audit", "gate", "check", str(self.workspace), "--json")
+        self.assertEqual(gate_check.returncode, 0, gate_check.stderr)
+        gate_check_payload = json.loads(gate_check.stdout)
+        self.assertEqual(
+            gate_check_payload["assessment_status"], "g0-prerequisites-met"
+        )
+        self.assertTrue(gate_check_payload["g0"]["g0_prerequisites_met"])
+
         preflight = run_cli("audit", "preflight", str(self.workspace), "--json")
         self.assertEqual(preflight.returncode, 0, preflight.stderr)
         self.assertEqual(
             json.loads(preflight.stdout)["assessment_status"],
-            "ready-for-declared-scope",
+            "preflight-passed",
         )
 
         finding = run_cli(
@@ -435,6 +448,7 @@ class DualModeCliTests(unittest.TestCase):
             "CLI Auditor",
         )
         self.assertEqual(finding.returncode, 0, finding.stderr)
+        self.assertIn("declared lifecycle state=open", finding.stdout)
 
         evidence = run_cli(
             "audit",
@@ -459,7 +473,8 @@ class DualModeCliTests(unittest.TestCase):
         verification = run_cli("audit", "verify", str(self.workspace), "--json")
         self.assertEqual(verification.returncode, 0, verification.stderr)
         self.assertEqual(
-            json.loads(verification.stdout)["assessment_status"], "ledger-consistent"
+            json.loads(verification.stdout)["assessment_status"],
+            "local-records-consistent",
         )
 
         report_path = self.workspace / "review.md"
@@ -475,7 +490,10 @@ class DualModeCliTests(unittest.TestCase):
         )
         self.assertEqual(report.returncode, 0, report.stderr)
         self.assertIn("not a scientific PASS", report.stdout)
-        self.assertIn("Report status: **REVIEW-READY**", report_path.read_text(encoding="utf-8"))
+        report_text = report_path.read_text(encoding="utf-8")
+        self.assertIn("Report status: **PREFLIGHT-CURRENT**", report_text)
+        self.assertIn("Declared lifecycle state", report_text)
+        self.assertIn("declared lifecycle labels", report_text)
         if os.name == "posix":
             self.assertEqual(report_path.stat().st_mode & 0o777, 0o600)
 
@@ -509,6 +527,12 @@ class DualModeCliTests(unittest.TestCase):
             self.workspace / ".rcsl-audit-pending.json",
             self.workspace / ".RCSL-AUDIT-PENDING.JSON",
         ):
+            existed_before = os.path.lexists(reserved_report)
+            bytes_before = (
+                reserved_report.read_bytes()
+                if reserved_report.is_file() and not reserved_report.is_symlink()
+                else None
+            )
             refused_reserved = run_cli(
                 "audit",
                 "report",
@@ -518,7 +542,9 @@ class DualModeCliTests(unittest.TestCase):
                 str(reserved_report),
             )
             self.assertEqual(refused_reserved.returncode, 1)
-            self.assertFalse(reserved_report.exists())
+            self.assertEqual(os.path.lexists(reserved_report), existed_before)
+            if bytes_before is not None:
+                self.assertEqual(reserved_report.read_bytes(), bytes_before)
 
         isolated_alias = self.root / "do_not_open_until_finished" / "report.md"
         refused_isolated_alias = run_cli(
@@ -535,7 +561,7 @@ class DualModeCliTests(unittest.TestCase):
         status = run_cli("audit", "status", str(self.workspace), "--json")
         self.assertEqual(status.returncode, 0, status.stderr)
         status_payload = json.loads(status.stdout)
-        self.assertEqual(status_payload["assessment_status"], "review-ready")
+        self.assertEqual(status_payload["assessment_status"], "preflight-current")
         self.assertEqual(status_payload["summary"]["finding_count"], 1)
 
         lint = run_cli("audit", "lint", str(self.workspace))
@@ -582,6 +608,35 @@ class DualModeCliTests(unittest.TestCase):
         self.assertIn("identity changed", stderr)
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "do not overwrite\n")
         self.assertFalse((displaced / report_name).exists())
+
+    def test_bound_lint_rejects_workspace_relocated_inside_ignored_project(self) -> None:
+        self._initialize_bound_workspace()
+        self._complete_templates()
+        relocated = self.project / ".rcsl-audit-workspace"
+        exclude = self.project / ".git" / "info" / "exclude"
+        exclude.write_text(
+            exclude.read_text(encoding="utf-8") + "\n.rcsl-audit-workspace/\n",
+            encoding="utf-8",
+        )
+        self.workspace.rename(relocated)
+
+        result = run_cli("audit", "lint", str(relocated))
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("outside the bound Git project", result.stderr)
+        self.assertEqual(self._git("status", "--porcelain"), "")
+
+    def test_bound_lint_fails_closed_while_a_commit_is_pending(self) -> None:
+        self._initialize_bound_workspace()
+        pending = self.workspace / ".rcsl-audit-pending.json"
+        pending.write_text("{}\n", encoding="utf-8")
+
+        result = run_cli("audit", "lint", str(self.workspace))
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("audit recover", result.stderr)
 
     def test_dirty_project_is_refused_before_workspace_creation(self) -> None:
         (self.project / "dirty.txt").write_text("uncommitted\n", encoding="utf-8")

@@ -90,7 +90,7 @@ python scripts/rcsl.py audit status "$WORKSPACE"
 
 它会通过固定目录句柄和独占创建生成 G0 契约模板、结构化 finding、evidence 和本地事件链所需的工作区；G0 初始为 `draft`，必须由人类填写、记录 gate 决定后才能通过 preflight。`audit report build` 同样固定 workspace 身份并拒绝覆盖，在 POSIX 上把报告写为 `0600`。完整命令链见 [Mode Audit 指南](docs/AUDIT_MODE.md)。
 
-Mode Audit 默认**不执行目标项目代码、不联网、不修改目标项目**。`--actor` / `--reviewer` 只是未认证的记录标签；hash chain 只检查仍被保留的本地记录是否自洽。任何 `current`、`ledger-consistent` 或 `review-ready` 都不是 scientific PASS。
+Mode Audit 默认**不执行目标项目代码、不联网、不修改目标项目**。`--actor` / `--reviewer` 只是未认证的记录标签；hash chain 只检查仍被保留的本地记录是否自洽。任何 `current`、`local-records-consistent` 或 `preflight-current` 都不是 scientific PASS；finding 的 `verified` / `closed` 也只是声明式生命周期状态，不是独立验证或科学认证。
 
 所有工作流都使用明确的 `train` / `audit` / `export` / `package` 命名空间；旧顶层命令和未经过真实需求验证的静态 view 已从活跃产品面剪除。
 

@@ -156,7 +156,7 @@ rcsl audit rebaseline "$WORKSPACE" --actor "research-owner" \
   --reason "Reviewed the new commit; prior evidence remains on the old baseline."
 ```
 
-`lint`, `gate check`, `preflight`, `verify`, and `report build` speak only to their declared structural or local-integrity scope. They **do not** establish that the research question is legitimate, a finding holds, a repair is correct, or a scientific claim is approved. `--actor` and `--reviewer` are unauthenticated record labels. The hash chain can expose inconsistencies in retained local history; it cannot prevent deletion or wholesale replacement or authenticate identity. No scoped status is a scientific PASS.
+`lint`, `gate check`, `preflight`, `verify`, and `report build` speak only to their declared structural or local-integrity scope. They **do not** establish that the research question is legitimate, a finding holds, a repair is correct, or a scientific claim is approved. `--actor` and `--reviewer` are unauthenticated record labels. The hash chain can expose inconsistencies in retained local history; it cannot prevent deletion or wholesale replacement or authenticate identity. No scoped status is a scientific PASS; the finding values `verified` and `closed` are declared lifecycle states, not independent verification or scientific approval.
 
 By default Mode Audit only reads the target and Git metadata. It **does not execute project code, use the network, or modify the target project**. Those actions require separate explicit authorization outside this tool. See the [complete Mode Audit guide](AUDIT_MODE_EN.md) for command states, finding transitions, and hash-chain limits.
 

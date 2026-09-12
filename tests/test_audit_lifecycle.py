@@ -6,7 +6,9 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -146,6 +148,41 @@ class AuditLifecycleTests(unittest.TestCase):
             actor="Named Reviewer",
         )
 
+    def _write_rehashed_events(self, events: list[dict[str, object]]) -> None:
+        previous_hash: str | None = None
+        rebuilt: list[dict[str, object]] = []
+        for sequence, event in enumerate(events, start=1):
+            body = {key: value for key, value in event.items() if key != "event_hash"}
+            body["seq"] = sequence
+            body["prev_hash"] = previous_hash
+            event_hash = audit_core._event_hash(body)
+            rebuilt.append({**body, "event_hash": event_hash})
+            previous_hash = event_hash
+        (self.workspace / "audit-events.jsonl").write_text(
+            "".join(
+                json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n"
+                for event in rebuilt
+            ),
+            encoding="utf-8",
+        )
+
+    def _move_workspace_inside_ignored_project(self) -> Path:
+        moved = self.project / ".ignored-audit-workspace"
+        exclude = self.project / ".git" / "info" / "exclude"
+        existing = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+        separator = "" if not existing or existing.endswith("\n") else "\n"
+        exclude.write_text(
+            existing + separator + "/.ignored-audit-workspace/\n",
+            encoding="utf-8",
+        )
+        self.workspace.rename(moved)
+        self.workspace = moved
+        self.assertEqual(
+            self._git(self.project, "status", "--porcelain=v1", "--untracked-files=all"),
+            "",
+        )
+        return moved
+
     def _new_finding(self, finding_id: str = "F-001") -> dict[str, object]:
         self._approve()
         return add_finding(
@@ -227,6 +264,35 @@ class AuditLifecycleTests(unittest.TestCase):
         case_variant = self.project.with_name(self.project.name.swapcase()) / "audit"
         self.assertTrue(_is_within(case_variant, self.project))
 
+    def test_relocated_workspace_inside_ignored_project_refuses_reads_and_mutations(
+        self,
+    ) -> None:
+        moved = self._move_workspace_inside_ignored_project()
+        observed_paths = (
+            moved / "audit-workspace.json",
+            moved / "audit-events.jsonl",
+        )
+        before = {path: path.read_bytes() for path in observed_paths}
+
+        with self.assertRaisesRegex(AuditError, "remain outside"):
+            verify_audit_workspace(moved)
+        with self.assertRaisesRegex(AuditError, "remain outside"):
+            list_findings(moved)
+        with self.assertRaisesRegex(AuditError, "remain outside"):
+            set_g0_gate(
+                moved,
+                "blocked",
+                reviewer="Named Reviewer",
+                rationale="A relocated workspace must not be writable.",
+                actor="Named Reviewer",
+            )
+
+        self.assertEqual(before, {path: path.read_bytes() for path in observed_paths})
+        self.assertEqual(
+            self._git(self.project, "status", "--porcelain=v1", "--untracked-files=all"),
+            "",
+        )
+
     def test_placeholders_block_g0_approval_then_approved_preflight_succeeds(self) -> None:
         with self.assertRaisesRegex(AuditError, "placeholders"):
             set_g0_gate(
@@ -276,6 +342,37 @@ class AuditLifecycleTests(unittest.TestCase):
             encoding="utf-8",
         )
         with self.assertRaisesRegex(AuditError, "changed after the recorded decision"):
+            preflight(self.workspace)
+
+    def test_legacy_duplicate_gate_fields_require_migration_for_approval_and_preflight(
+        self,
+    ) -> None:
+        contract = self.workspace / "research-contract-template.md"
+        legacy_fields = (
+            "\n- Status (`draft`, `approved`, or `blocked`): approved\n"
+            "- Decision (`approve`, `revise`, or `stop`): approve\n"
+            "- Approver and date: Named Reviewer, 2026-09-13\n"
+        )
+        self._complete_contract()
+        contract.write_text(
+            contract.read_text(encoding="utf-8") + legacy_fields,
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(AuditError, "legacy duplicate decision fields"):
+            set_g0_gate(
+                self.workspace,
+                "approved",
+                reviewer="Named Reviewer",
+                rationale="Legacy duplicate fields cannot authorize the gate.",
+                actor="Named Reviewer",
+            )
+
+        self._approve()
+        contract.write_text(
+            contract.read_text(encoding="utf-8") + legacy_fields,
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(AuditError, "legacy duplicate decision fields"):
             preflight(self.workspace)
 
     def test_head_drift_requires_rebaseline_and_old_findings_are_stale(self) -> None:
@@ -358,7 +455,9 @@ class AuditLifecycleTests(unittest.TestCase):
         self.assertEqual(closed["status"], "closed")
         self.assertTrue(verify_audit_workspace(self.workspace)["ok"])
 
-    def test_terminal_transition_requires_evidence_and_clean_approved_preflight(self) -> None:
+    def test_evidence_gated_transition_requires_evidence_and_clean_approved_preflight(
+        self,
+    ) -> None:
         self._new_finding()
         self._advance_to_mitigated()
 
@@ -377,14 +476,14 @@ class AuditLifecycleTests(unittest.TestCase):
             evidence_id="E-001",
             kind="observed",
             reference="tests/fixture-output.txt",
-            summary="Record the evidence before attempting a trusted terminal state.",
+            summary="Record the evidence before attempting an evidence-gated declared state.",
             actor="Auditor",
         )
         set_g0_gate(
             self.workspace,
             "draft",
             reviewer="Named Reviewer",
-            rationale="Return the fixture gate to draft to exercise the terminal guard.",
+            rationale="Return the fixture gate to draft to exercise the evidence gate.",
             actor="Named Reviewer",
         )
         with self.assertRaisesRegex(AuditError, "G0 gate"):
@@ -405,7 +504,7 @@ class AuditLifecycleTests(unittest.TestCase):
                 "F-001",
                 "verified",
                 actor="Auditor",
-                rationale="A dirty project cannot support a trusted terminal state.",
+                rationale="A dirty project cannot support an evidence-gated declared state.",
             )
         dirty_path.unlink()
         self.assertEqual(
@@ -476,6 +575,46 @@ class AuditLifecycleTests(unittest.TestCase):
         self.assertEqual(clean["status"], "clean")
         self.assertFalse(clean["recovered"])
         self.assertEqual(clean["verification"]["event_count"], event_count + 1)
+
+    def test_recovery_refuses_relocated_workspace_inside_ignored_project(self) -> None:
+        original_write = audit_core._atomic_write_text
+        failed = False
+
+        def fail_snapshot(path: Path, content: str) -> None:
+            nonlocal failed
+            if (
+                not failed
+                and path.name == "audit-workspace.json"
+                and (self.workspace / PENDING_COMMIT_NAME).exists()
+            ):
+                failed = True
+                raise AuditError("simulated snapshot failure")
+            original_write(path, content)
+
+        with mock.patch.object(audit_core, "_atomic_write_text", side_effect=fail_snapshot):
+            with self.assertRaisesRegex(AuditError, "audit recover"):
+                set_g0_gate(
+                    self.workspace,
+                    "blocked",
+                    reviewer="Named Reviewer",
+                    rationale="Create a pending gate transition for relocation testing.",
+                    actor="Named Reviewer",
+                )
+
+        moved = self._move_workspace_inside_ignored_project()
+        observed_paths = (
+            moved / "audit-workspace.json",
+            moved / "audit-events.jsonl",
+            moved / PENDING_COMMIT_NAME,
+        )
+        before = {path: path.read_bytes() for path in observed_paths}
+        with self.assertRaisesRegex(AuditError, "remain outside"):
+            recover_audit(moved)
+        self.assertEqual(before, {path: path.read_bytes() for path in observed_paths})
+        self.assertEqual(
+            self._git(self.project, "status", "--porcelain=v1", "--untracked-files=all"),
+            "",
+        )
 
     def test_pending_intent_write_failure_leaves_public_state_unchanged(self) -> None:
         metadata_path = self.workspace / "audit-workspace.json"
@@ -651,7 +790,7 @@ class AuditLifecycleTests(unittest.TestCase):
         before = {path: path.read_bytes() for path in (metadata_path, event_path)}
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
 
-        with self.assertRaisesRegex(AuditError, "metadata hash does not match"):
+        with self.assertRaisesRegex(AuditError, "payload does not match"):
             audit_core._commit_lifecycle_change(
                 self.workspace,
                 snapshot_relative_path="audit-workspace.json",
@@ -664,7 +803,7 @@ class AuditLifecycleTests(unittest.TestCase):
         self.assertEqual(before, {path: path.read_bytes() for path in before})
         self.assertFalse((self.workspace / PENDING_COMMIT_NAME).exists())
 
-    def test_interrupted_bind_recovers_directory_metadata_and_first_event(self) -> None:
+    def test_legacy_v1_interrupted_bind_recovers_metadata_and_first_event(self) -> None:
         workspace = self.root / "recover-bind-workspace"
         self._make_workspace(workspace)
         with mock.patch.object(
@@ -682,10 +821,48 @@ class AuditLifecycleTests(unittest.TestCase):
 
         self.assertTrue((workspace / PENDING_COMMIT_NAME).is_file())
         self.assertFalse((workspace / "findings").exists())
+        pending_path = workspace / PENDING_COMMIT_NAME
+        legacy_pending = json.loads(pending_path.read_text(encoding="utf-8"))
+        legacy_pending["schema_version"] = audit_core.LEGACY_PENDING_COMMIT_SCHEMA_VERSION
+        for field in (
+            "snapshot_after_sha256",
+            "event_log_before_sha256",
+            "event_log_after_sha256",
+            "content_sha256",
+        ):
+            legacy_pending.pop(field)
+        pending_path.write_text(
+            json.dumps(legacy_pending, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         recovered = recover_audit(workspace)
         self.assertEqual(recovered["verification"]["event_count"], 1)
         self.assertTrue((workspace / "findings").is_dir())
         self.assertTrue(verify_audit_workspace(workspace)["ok"])
+
+    def test_interrupted_bind_refuses_zero_byte_event_log_as_a_third_state(self) -> None:
+        workspace = self.root / "zero-byte-bind-workspace"
+        self._make_workspace(workspace)
+        with mock.patch.object(
+            audit_core,
+            "_ensure_empty_findings_directory",
+            side_effect=AuditError("simulated directory failure"),
+        ):
+            with self.assertRaisesRegex(AuditError, "audit recover"):
+                bind_audit(
+                    self.project,
+                    workspace,
+                    actor="Audit Owner",
+                    rationale="Leave a durable bind intent for third-state testing.",
+                )
+
+        event_log = workspace / "audit-events.jsonl"
+        event_log.write_bytes(b"")
+        pending_before = (workspace / PENDING_COMMIT_NAME).read_bytes()
+        with self.assertRaisesRegex(AuditError, "neither the recorded before-image"):
+            recover_audit(workspace)
+        self.assertEqual(event_log.read_bytes(), b"")
+        self.assertEqual((workspace / PENDING_COMMIT_NAME).read_bytes(), pending_before)
 
     def test_recovery_refuses_to_overwrite_an_unknown_third_state(self) -> None:
         self._complete_contract()
@@ -720,11 +897,153 @@ class AuditLifecycleTests(unittest.TestCase):
     def test_verify_detects_a_tampered_event(self) -> None:
         event_path = self.workspace / "audit-events.jsonl"
         event = json.loads(event_path.read_text(encoding="utf-8").splitlines()[0])
-        event["payload"]["rationale"] = "edited after the event was recorded"
+        event["payload"]["lifecycle_projection"]["g0_gate"]["rationale"] = (
+            "edited after the event was recorded"
+        )
         event_path.write_text(json.dumps(event) + "\n", encoding="utf-8")
 
         with self.assertRaisesRegex(AuditError, "hash does not match"):
             verify_audit_workspace(self.workspace)
+
+    def test_new_lifecycle_events_store_a_full_projection_as_the_only_claim(self) -> None:
+        self._approve()
+        rebaseline(
+            self.workspace,
+            actor="Audit Owner",
+            reason="Exercise each projected lifecycle transition.",
+        )
+        metadata = json.loads(
+            (self.workspace / "audit-workspace.json").read_text(encoding="utf-8")
+        )
+        events = [
+            json.loads(line)
+            for line in (self.workspace / "audit-events.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        lifecycle_events = [
+            event
+            for event in events
+            if event["event_type"] in audit_core.LIFECYCLE_EVENT_TYPES
+        ]
+
+        self.assertEqual(
+            [event["event_type"] for event in lifecycle_events],
+            ["workspace_bound", "g0_gate_set", "baseline_replaced"],
+        )
+        for event in lifecycle_events:
+            self.assertEqual(
+                set(event["payload"]),
+                {"metadata_sha256", "lifecycle_projection"},
+            )
+            self.assertEqual(
+                event["payload"]["lifecycle_projection"]["event_projection_mode"],
+                audit_core.LIFECYCLE_PROJECTION_MODE,
+            )
+        self.assertEqual(
+            lifecycle_events[-1]["payload"]["lifecycle_projection"],
+            metadata["audit_lifecycle"],
+        )
+
+    def test_rehashed_gate_projection_tamper_is_rejected(self) -> None:
+        self._approve()
+        event_path = self.workspace / "audit-events.jsonl"
+        events = [
+            json.loads(line) for line in event_path.read_text(encoding="utf-8").splitlines()
+        ]
+        events[-1]["payload"]["lifecycle_projection"]["g0_gate"]["rationale"] = (
+            "A rehashed event still cannot contradict its metadata snapshot."
+        )
+        self._write_rehashed_events(events)
+
+        with self.assertRaisesRegex(AuditError, "projection does not match"):
+            verify_audit_workspace(self.workspace)
+
+    def test_rehashed_projection_downgrade_is_rejected(self) -> None:
+        event_path = self.workspace / "audit-events.jsonl"
+        events = [
+            json.loads(line) for line in event_path.read_text(encoding="utf-8").splitlines()
+        ]
+        events[0]["payload"] = {
+            "metadata_sha256": events[0]["payload"]["metadata_sha256"]
+        }
+        self._write_rehashed_events(events)
+
+        with self.assertRaisesRegex(AuditError, "requires a full lifecycle event projection"):
+            verify_audit_workspace(self.workspace)
+
+    def test_rehashed_rebaseline_projection_must_reset_g0(self) -> None:
+        rebaseline(
+            self.workspace,
+            actor="Audit Owner",
+            reason="Create a second lifecycle projection for tamper testing.",
+        )
+        metadata_path = self.workspace / "audit-workspace.json"
+        event_path = self.workspace / "audit-events.jsonl"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        events = [
+            json.loads(line) for line in event_path.read_text(encoding="utf-8").splitlines()
+        ]
+        metadata["audit_lifecycle"]["g0_gate"]["status"] = "approved"
+        events[-1]["payload"]["lifecycle_projection"]["g0_gate"]["status"] = "approved"
+        events[-1]["payload"]["metadata_sha256"] = audit_core._metadata_hash(metadata)
+        metadata_path.write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        self._write_rehashed_events(events)
+
+        with self.assertRaisesRegex(AuditError, "must reset G0 to draft"):
+            verify_audit_workspace(self.workspace)
+
+    def test_legacy_v2_events_remain_readable_and_migrate_on_next_write(self) -> None:
+        metadata_path = self.workspace / "audit-workspace.json"
+        event_path = self.workspace / "audit-events.jsonl"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        lifecycle = metadata["audit_lifecycle"]
+        lifecycle.pop("event_projection_mode")
+        events = [
+            json.loads(line) for line in event_path.read_text(encoding="utf-8").splitlines()
+        ]
+        baseline = lifecycle["baseline"]
+        gate = lifecycle["g0_gate"]
+        events[0]["payload"] = {
+            "project_root": lifecycle["project"]["root"],
+            "baseline_head": baseline["head"],
+            "baseline_id": baseline["id"],
+            "baseline_branch": baseline["branch"],
+            "g0_status": gate["status"],
+            "rationale": gate["rationale"],
+            "metadata_sha256": audit_core._metadata_hash(metadata),
+            "contract_sha256": gate["contract_sha256"],
+        }
+        metadata_path.write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        self._write_rehashed_events(events)
+
+        self.assertTrue(verify_audit_workspace(self.workspace)["ok"])
+        set_g0_gate(
+            self.workspace,
+            "blocked",
+            reviewer="Named Reviewer",
+            rationale="The next lifecycle write establishes the strict projection anchor.",
+            actor="Named Reviewer",
+        )
+        migrated_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        migrated_events = [
+            json.loads(line) for line in event_path.read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(
+            migrated_metadata["audit_lifecycle"]["event_projection_mode"],
+            audit_core.LIFECYCLE_PROJECTION_MODE,
+        )
+        self.assertEqual(
+            migrated_events[-1]["payload"]["lifecycle_projection"],
+            migrated_metadata["audit_lifecycle"],
+        )
+        self.assertTrue(verify_audit_workspace(self.workspace)["ok"])
 
     def test_schema_versions_and_event_sequences_require_exact_integers(self) -> None:
         self._new_finding()
@@ -870,10 +1189,32 @@ class AuditLifecycleTests(unittest.TestCase):
         findings.unlink()
         findings.mkdir()
 
-        lock = self.workspace / ".rcsl-write.lock"
-        lock.write_text("fixture writer\n", encoding="utf-8")
+        if audit_core._fcntl is None:
+            self.skipTest("POSIX advisory locks unavailable")
+        lock = self.workspace / audit_core.LOCK_FILE_NAME
+        holder = subprocess.Popen(
+            (
+                sys.executable,
+                "-c",
+                (
+                    "import fcntl, os, sys; "
+                    "fd=os.open(sys.argv[1], os.O_CREAT|os.O_RDWR, 0o600); "
+                    "fcntl.flock(fd, fcntl.LOCK_EX); "
+                    "print('locked', flush=True); sys.stdin.read()"
+                ),
+                str(lock),
+            ),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
         try:
+            self.assertIsNotNone(holder.stdout)
+            self.assertEqual(holder.stdout.readline().strip(), "locked")
             with self.assertRaisesRegex(AuditError, "locked by another writer"):
+                verify_audit_workspace(self.workspace)
+            with self.assertRaisesRegex(AuditError, "locked by another"):
                 set_g0_gate(
                     self.workspace,
                     "blocked",
@@ -882,7 +1223,70 @@ class AuditLifecycleTests(unittest.TestCase):
                     actor="Named Reviewer",
                 )
         finally:
-            lock.unlink()
+            holder.kill()
+            holder.communicate(timeout=5)
+
+        # A killed writer leaves the fixed lock file, but not a kernel lock.
+        self.assertTrue(lock.is_file())
+        gate = set_g0_gate(
+            self.workspace,
+            "blocked",
+            reviewer="Named Reviewer",
+            rationale="A dead writer must not require manual lock-file cleanup.",
+            actor="Named Reviewer",
+        )
+        self.assertEqual(gate["status"], "blocked")
+        self.assertTrue(verify_audit_workspace(self.workspace)["ok"])
+
+    def test_reader_refuses_a_writer_snapshot_event_intermediate_state(self) -> None:
+        event_path = self.workspace / "audit-events.jsonl"
+        event_count = len(event_path.read_text(encoding="utf-8").splitlines())
+        snapshot_written = threading.Event()
+        finish_write = threading.Event()
+        writer_errors: list[BaseException] = []
+        original_write = audit_core._atomic_write_text
+        paused = False
+
+        def pause_after_snapshot(path: Path, content: str) -> None:
+            nonlocal paused
+            original_write(path, content)
+            if (
+                not paused
+                and path.name == "audit-workspace.json"
+                and (self.workspace / PENDING_COMMIT_NAME).exists()
+            ):
+                paused = True
+                snapshot_written.set()
+                if not finish_write.wait(timeout=5):
+                    raise AuditError("timed out waiting to finish simulated write")
+
+        def mutate() -> None:
+            try:
+                set_g0_gate(
+                    self.workspace,
+                    "blocked",
+                    reviewer="Named Reviewer",
+                    rationale="Pause between the snapshot and event after-images.",
+                    actor="Named Reviewer",
+                )
+            except BaseException as error:  # pragma: no cover - asserted below.
+                writer_errors.append(error)
+
+        with mock.patch.object(audit_core, "_atomic_write_text", side_effect=pause_after_snapshot):
+            writer = threading.Thread(target=mutate)
+            writer.start()
+            self.assertTrue(snapshot_written.wait(timeout=5))
+            try:
+                with self.assertRaisesRegex(AuditError, "locked by another writer"):
+                    verify_audit_workspace(self.workspace)
+            finally:
+                finish_write.set()
+                writer.join(timeout=5)
+
+        self.assertFalse(writer.is_alive())
+        self.assertEqual(writer_errors, [])
+        verification = verify_audit_workspace(self.workspace)
+        self.assertEqual(verification["event_count"], event_count + 1)
 
     def test_isolated_directory_alias_is_refused_case_insensitively(self) -> None:
         isolated_alias = self.root / "do_not_open_until_finished"
@@ -895,14 +1299,16 @@ class AuditLifecycleTests(unittest.TestCase):
                 rationale="This path must be rejected before access.",
             )
 
-    def test_draft_report_is_not_called_review_ready(self) -> None:
+    def test_incomplete_report_is_not_called_preflight_current(self) -> None:
         report = build_report_data(self.workspace)
         markdown = render_report_markdown(self.workspace)
-        self.assertEqual(report["report_status"], "draft")
-        self.assertIn("Report status: **DRAFT**", markdown)
-        self.assertNotIn("Report status: **REVIEW-READY**", markdown)
+        self.assertEqual(report["report_status"], "preflight-not-current")
+        self.assertIn("Report status: **PREFLIGHT-NOT-CURRENT**", markdown)
+        self.assertNotIn("Report status: **PREFLIGHT-CURRENT**", markdown)
 
-    def test_report_data_and_markdown_are_review_ready_and_non_mutating(self) -> None:
+    def test_report_data_and_markdown_are_preflight_current_and_non_mutating(
+        self,
+    ) -> None:
         self._new_finding()
         observed_paths = (
             self.workspace / "audit-workspace.json",
@@ -915,9 +1321,11 @@ class AuditLifecycleTests(unittest.TestCase):
         markdown = render_report_markdown(self.workspace)
 
         self.assertEqual(report["validator_scope"], "local_hash_chain_lifecycle_integrity_only")
-        self.assertEqual(report["report_status"], "review-ready")
+        self.assertEqual(report["report_status"], "preflight-current")
         self.assertTrue(report["findings"][0]["baseline_current"])
-        self.assertIn("REVIEW-READY", markdown)
+        self.assertIn("PREFLIGHT-CURRENT", markdown)
+        self.assertIn("Declared lifecycle state", markdown)
+        self.assertIn("declared lifecycle labels", markdown)
         self.assertNotIn("scientific PASS", markdown)
         self.assertEqual(before, {path: path.read_bytes() for path in observed_paths})
 

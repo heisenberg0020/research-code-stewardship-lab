@@ -12,7 +12,6 @@ owner accepts the unresolved risks.
 - Human owner: {{name and role}}
 - Review date: {{YYYY-MM-DD}}
 - Decision this work will inform: {{decision}}
-- Status (`draft`, `approved`, or `blocked`): {{status}}
 
 ## Research mandate
 
@@ -54,6 +53,10 @@ owner accepts the unresolved risks.
 
 ## Human gate decision
 
-- Decision (`approve`, `revise`, or `stop`): {{gate decision}}
-- Rationale: {{rationale tied to evidence and risk}}
-- Approver and date: {{approver, role, and date}}
+This contract records the evidence and constraints a named human needs for the
+gate. It does not store the final gate outcome. Record the authoritative
+`draft`, `approved`, or `blocked` decision only with `audit gate record`; do not
+duplicate it here.
+
+- Decision questions requiring human judgment: {{decision questions}}
+- Unresolved risks to present at the gate: {{risks requiring a decision}}

@@ -463,13 +463,16 @@ def print_workspace_inspection(inspection: WorkspaceInspection) -> None:
 
 
 def command_lint_audit(workspace_path: Path | str) -> int:
-    """Return nonzero for an incomplete local audit workspace."""
+    """Return nonzero for an incomplete or unsafely located audit workspace."""
 
-    inspection = inspect_audit_workspace(workspace_path)
-    if inspection is None:
-        return 2
-    print_workspace_inspection(inspection)
-    return 0 if inspection.is_complete else 1
+    with audit_core.audit_workspace_read_lock(workspace_path):
+        inspection = inspect_audit_workspace(workspace_path)
+        if inspection is None:
+            return 2
+        if inspection.metadata is not None and "audit_lifecycle" in inspection.metadata:
+            audit_core.validate_bound_workspace_separation(inspection.workspace)
+        print_workspace_inspection(inspection)
+        return 0 if inspection.is_complete else 1
 
 
 def command_overview() -> int:
@@ -545,7 +548,7 @@ def command_validate() -> int:
 
 
 AUDIT_OUTPUT_LIMITATIONS = (
-    "This checks local records and declared human decisions only; it is not a scientific verdict.",
+    "This checks retained local records, declared lifecycle states, and declared human decisions only; verified/closed are recorded labels, not independent verification or a scientific verdict.",
     "Actor and reviewer names are labels, not authenticated identities or signatures.",
     "No audited-project code is executed and no network resource is fetched.",
 )
@@ -643,12 +646,15 @@ def command_audit_status(workspace: Path | str, *, as_json: bool) -> int:
     print(f"Audit workspace: {payload['workspace']}")
     print(f"G0 declared status: {str(gate.get('status')).upper()}")
     print(f"Findings: {summary.get('finding_count')} total · {summary.get('stale_finding_count')} stale")
-    print(f"Ledger: CONSISTENT ({payload['event_count']} retained local events)")
-    print(f"Report state: {str(payload['assessment_status']).upper()}")
+    print(f"Retained local records: CONSISTENT ({payload['event_count']} events)")
+    print(
+        "Report preflight/current-record state: "
+        f"{str(payload['assessment_status']).upper()}"
+    )
     if payload["preflight_issue"]:
-        print(f"Preflight: NOT READY — {payload['preflight_issue']}")
+        print(f"Preflight: NOT PASSED — {payload['preflight_issue']}")
     else:
-        print("Preflight: READY for the declared, human-approved scope")
+        print("Preflight: PASSED for the declared, human-approved scope")
     print(AUDIT_OUTPUT_LIMITATIONS[0])
     return 0
 
@@ -659,7 +665,9 @@ def command_audit_gate_check(workspace: Path | str, *, as_json: bool) -> int:
         "schema_version": 1,
         "operation_status": "read",
         "assessment_status": (
-            "ready-for-preflight" if assessment["ready_for_preflight"] else "needs-human-decision"
+            "g0-prerequisites-met"
+            if assessment["g0_prerequisites_met"]
+            else "needs-human-decision"
         ),
         "scope": "G0 contract structure and declared-decision freshness only",
         "limitations": [assessment["limitation"]],
@@ -676,7 +684,7 @@ def command_audit_gate_check(workspace: Path | str, *, as_json: bool) -> int:
         )
         print(f"Gate assessment: {str(payload['assessment_status']).upper()}")
         print(str(assessment["limitation"]))
-    return 0 if assessment["ready_for_preflight"] else 1
+    return 0 if assessment["g0_prerequisites_met"] else 1
 
 
 def command_audit_gate_record(
@@ -704,15 +712,15 @@ def command_audit_preflight(workspace: Path | str, *, as_json: bool) -> int:
     payload = {
         "schema_version": 1,
         "operation_status": "checked",
-        "assessment_status": "ready-for-declared-scope",
-        "scope": "clean Git baseline, current contract digest, declared G0 approval, and ledger integrity",
+        "assessment_status": "preflight-passed",
+        "scope": "clean Git baseline, current contract digest, declared G0 approval, and retained local-record consistency",
         "limitations": list(AUDIT_OUTPUT_LIMITATIONS),
         "preflight": result,
     }
     if as_json:
         _print_json(payload)
     else:
-        print("Preflight: READY FOR DECLARED SCOPE")
+        print("Preflight: PASSED")
         print(f"Baseline HEAD: {result['baseline']['head']}")
         print(AUDIT_OUTPUT_LIMITATIONS[0])
     return 0
@@ -740,7 +748,10 @@ def command_audit_finding_add(args: argparse.Namespace) -> int:
         first_broken_contract=args.first_contract,
         actor=args.actor,
     )
-    print(f"Finding RECORDED: {finding['id']} · {finding['status']}")
+    print(
+        f"Finding RECORDED: {finding['id']} · "
+        f"declared lifecycle state={finding['status']}"
+    )
     print("This records a claim for review; it does not establish that the claim is correct.")
     return 0
 
@@ -767,7 +778,8 @@ def command_audit_finding_list(workspace: Path | str, *, as_json: bool) -> int:
     for finding in findings:
         print(
             f"{finding['id']} · {finding['layer']} · {finding['severity']} · "
-            f"{finding['status']} · {finding['baseline_state']} baseline · {finding['title']}"
+            f"declared-state={finding['status']} · "
+            f"{finding['baseline_state']} baseline · {finding['title']}"
         )
     print(AUDIT_OUTPUT_LIMITATIONS[0])
     return 0
@@ -796,7 +808,10 @@ def command_audit_finding_transition(args: argparse.Namespace) -> int:
         actor=args.actor,
         rationale=args.rationale,
     )
-    print(f"Finding state RECORDED: {finding['id']} → {finding['status']}")
+    print(
+        "Declared finding lifecycle state RECORDED: "
+        f"{finding['id']} → {finding['status']}"
+    )
     print(AUDIT_OUTPUT_LIMITATIONS[0])
     return 0
 
@@ -806,7 +821,7 @@ def command_audit_verify(workspace: Path | str, *, as_json: bool) -> int:
     payload = {
         "schema_version": 1,
         "operation_status": "checked",
-        "assessment_status": "ledger-consistent",
+        "assessment_status": "local-records-consistent",
         "scope": result["validator_scope"],
         "limitations": list(AUDIT_OUTPUT_LIMITATIONS),
         "verification": result,
@@ -814,7 +829,7 @@ def command_audit_verify(workspace: Path | str, *, as_json: bool) -> int:
     if as_json:
         _print_json(payload)
     else:
-        print("Ledger and current snapshots: CONSISTENT")
+        print("Retained local records and current snapshots: CONSISTENT")
         print(f"Events: {result['event_count']} · Findings: {result['finding_count']}")
         print(f"Findings from an older baseline: {result['stale_finding_count']}")
         print(AUDIT_OUTPUT_LIMITATIONS[0])
@@ -826,7 +841,7 @@ def command_audit_recover(workspace: Path | str, *, as_json: bool) -> int:
     payload = {
         "schema_version": 1,
         "operation_status": result["status"],
-        "assessment_status": "ledger-consistent",
+        "assessment_status": "local-records-consistent",
         "scope": result["verification"]["validator_scope"],
         "limitations": list(AUDIT_OUTPUT_LIMITATIONS),
         "recovery": result,
@@ -873,7 +888,7 @@ def command_audit_report(
         )
         return 1
     reserved_names = {
-        ".rcsl-write.lock",
+        audit_core.LOCK_FILE_NAME,
         audit_core.PENDING_COMMIT_NAME,
         WORKSPACE_METADATA_NAME,
         audit_core.EVENT_LOG_NAME,
@@ -1182,7 +1197,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     audit_status = audit_commands.add_parser(
-        "status", help="Read binding, G0, finding, ledger, and preflight summary."
+        "status",
+        help="Read binding, G0, finding, retained local-record, and preflight summary.",
     )
     audit_status.add_argument("workspace", type=Path)
     audit_status.add_argument("--json", action="store_true", help="Emit stable machine-readable JSON.")
@@ -1212,7 +1228,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     audit_preflight = audit_commands.add_parser(
         "preflight",
-        help="Check approved G0, current contract, clean unchanged Git HEAD, and ledger integrity.",
+        help="Check approved G0, current contract, clean unchanged Git HEAD, and retained local-record consistency.",
     )
     audit_preflight.add_argument("workspace", type=Path)
     audit_preflight.add_argument("--json", action="store_true")

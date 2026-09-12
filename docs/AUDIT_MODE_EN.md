@@ -48,17 +48,17 @@ Below, `rcsl` denotes the CLI (for example, run `python scripts/rcsl.py` from th
 | --- | --- | --- |
 | `rcsl train overview`; `rcsl train doctor`; `rcsl train start --level 1..4`; `rcsl train validate` | Mode Train curriculum navigation, environment diagnosis, per-level entry, and public checks | Training a model or issuing a scientific verdict |
 | `rcsl audit init --project PROJECT --output WORKSPACE --level 1..4 --actor ACTOR [--reason TEXT]` | Requires an existing immediate parent; rejects dirty/non-Git projects, in-project workspaces, and existing outputs; writes exclusively through pinned parent/workspace descriptors, binds clean `HEAD`, and creates G0 `draft` | Authenticating an actor, executing the project, approving G0, or accepting any conclusion |
-| `rcsl audit status WORKSPACE [--json]` | Reads binding, G0, finding, ledger, and preflight summary | Validating scientific correctness |
+| `rcsl audit status WORKSPACE [--json]` | Reads binding, G0, findings, retained local records, and preflight summary | Validating scientific correctness |
 | `rcsl audit lint WORKSPACE` | Reports complete only when **all four templates** have required headings and no unresolved `{{...}}` | Approving G0 or deciding a finding holds |
 | `rcsl audit gate check WORKSPACE [--json]` | Checks research-contract completeness and whether its current bytes match the recorded gate | Granting authority or authenticating a reviewer |
 | `rcsl audit gate record WORKSPACE --decision draft\|approved\|blocked --reviewer REVIEWER --rationale TEXT [--actor ACTOR]` | Records a named human G0 decision; reviewer label is used when `--actor` is absent | Verifying identity, rationale truthfulness, or scientific conclusion |
-| `rcsl audit preflight WORKSPACE [--json]` | Requires a **complete research contract + `approved` gate for current bytes + clean, non-drifted `HEAD` + consistent ledger** | Executing code, using the network, or proving research correctness |
+| `rcsl audit preflight WORKSPACE [--json]` | Requires a **complete research contract + `approved` gate for current bytes + clean, non-drifted `HEAD` + consistent retained local records** | Executing code, using the network, or proving research correctness |
 | `rcsl audit rebaseline WORKSPACE --actor ACTOR --reason TEXT` | Explicitly binds a new clean `HEAD`; resets G0 to `draft` and marks old findings stale | Migrating old evidence to the new commit or closing old findings |
 | `rcsl audit finding add WORKSPACE --id ID --title TEXT --layer L1\|L2\|L3\|L4\|cross-cutting --competency C1..C7 --severity critical\|high\|medium\|low\|info --claim TEXT --first-contract TEXT --actor ACTOR` | Records an `open` finding on a current baseline that passed preflight | Proving the claim is true |
 | `rcsl audit finding list WORKSPACE [--json]` | Shows current finding snapshots | Reassessing their scientific sufficiency |
-| `rcsl audit finding transition WORKSPACE --finding ID --to open\|triaged\|accepted\|mitigated\|verified\|closed\|dismissed\|blocked --actor ACTOR --rationale TEXT` | Appends a legal, reasoned lifecycle transition | Erasing prior records or automatically calling a repair trustworthy |
+| `rcsl audit finding transition WORKSPACE --finding ID --to open\|triaged\|accepted\|mitigated\|verified\|closed\|dismissed\|blocked --actor ACTOR --rationale TEXT` | Appends a legal, reasoned declared lifecycle transition; `verified` / `closed` are recorded labels | Erasing prior records, independently verifying a repair, or automatically calling it trustworthy |
 | `rcsl audit evidence add WORKSPACE --finding ID --id ID --kind asserted\|observed\|derived\|reproduced\|contradicted --reference TEXT --summary TEXT --actor ACTOR` | Appends typed evidence on a current baseline that passed preflight | Proving evidence sufficient, independent, or unbiased |
-| `rcsl audit verify WORKSPACE [--json]` | Checks local metadata, snapshots, and hash-chain consistency | Verifying remote history, identity, or scientific conclusion |
+| `rcsl audit verify WORKSPACE [--json]` | Checks retained local metadata, snapshots, and hash-chain consistency | Verifying remote history, identity, or scientific conclusion |
 | `rcsl audit recover WORKSPACE [--json]` | Explicitly finishes one interrupted commit recorded by `.rcsl-audit-pending.json`, then verifies it; with no pending intent it only verifies and reports clean | Rolling history back, selectively dropping an event, or repairing unknown tampering |
 | `rcsl audit report build WORKSPACE --output PATH [--format markdown\|json]` | Exclusive-creates one non-existing Markdown/JSON review record directly in the workspace root (Markdown by default), with mode `0600` on POSIX; pins and rechecks workspace identity and refuses symlinks, subdirectories, external paths, and filenames matching `.rcsl-write.lock`, `.rcsl-audit-pending.json`, `audit-workspace.json`, `audit-events.jsonl`, or any of the four templates case-insensitively | Creating a scientific PASS, signature, or release approval |
 
@@ -67,8 +67,8 @@ Below, `rcsl` denotes the CLI (for example, run `python scripts/rcsl.py` from th
 1. After `init`, G0 is always `draft`.
 2. `lint` is `COMPLETE` only after all four templates are completed; it remains a structural check.
 3. `gate record --decision approved` is recordable only after `research-contract-template.md` is complete, and binds the decision to the current contract bytes.
-4. `preflight` requires a **complete research contract plus current approved gate**, and also a clean non-drifted target `HEAD` and a consistent ledger. It does not require every finding to be scientifically decided.
-5. `finding add` and `evidence add` require preflight. Entering `verified` (and therefore later `closed`) requires evidence, a current baseline, and passing preflight.
+4. `preflight` requires a **complete research contract plus current approved gate**, and also a clean non-drifted target `HEAD` and consistent retained local records. It does not require every finding to be scientifically decided.
+5. `finding add` and `evidence add` require preflight. Entering the declared `verified` state (and therefore later `closed`) requires one recorded evidence item, a current baseline, and passing preflight; this does not judge whether the evidence is sufficient, independent, or correct.
 
 ## Minimum copyable E2E flow
 
@@ -158,18 +158,22 @@ Rebaseline makes old findings `stale` and resets G0 to `draft`. Complete the res
 2. **Classify by the first failed contract.** L1 semantics, L2 pipeline, L3 scientific validity, L4 agent governance. Effects can cross layers, but the primary classification must not double count them.
 3. **One finding, one causal chain.** `claim` and `first-contract` should make location, rule, impact, and known limits clear. Evidence attaches only concrete asserted/observed/derived/reproduced/contradicted records.
 4. **Record; do not hand-edit history.** The CLI refreshes current metadata/finding snapshots and appends gate, transition, evidence, and rebaseline rationale to the event ledger. Correct old conclusions through a new lifecycle action, not by editing JSON/JSONL directly.
-5. **Terminal states have extra gates.** `open → triaged → accepted → mitigated → verified → closed` is one legal example path. `verified`/`closed` require evidence, a current baseline, and preflight; intermediate states cannot be skipped.
+5. **Some declared lifecycle states have an evidence gate.** `open → triaged → accepted → mitigated → verified → closed` is one legal example path. `verified` / `closed` require at least one recorded evidence item, a current baseline, and preflight; intermediate states cannot be skipped. They remain serialized for record compatibility and do not mean the system performed independent verification or scientific approval.
 
 ## Honest meaning of status words
 
 | Status | It may say | It must never say |
 | --- | --- | --- |
-| `structure` | The four templates meet lint’s format and placeholder requirements | A finding is true or a conclusion is correct |
-| `ledger` | Retained local events, metadata, and finding snapshots have internally consistent hash relationships | History was not deleted/replaced or witnessed by a trusted third party |
-| `current` | The target worktree is clean and `HEAD` matches the active baseline | Code is faithful, experiment is fair, or risk-free |
-| `review-ready` | Current G0, Git baseline, and ledger pass preflight, and the report has no stale finding from an older baseline; human reading can begin | `lint` completed, any finding/evidence exists, findings reached closure, evidence is sufficient, or a reviewer, PI, or independent reproduction substantively approved the conclusion |
+| `contract_structure=complete` | The research contract meets structural and placeholder requirements | G0 is approved, a finding is true, or a conclusion is correct |
+| `g0-prerequisites-met` | The research contract is complete and its declared `approved` decision matches the current bytes | A clean Git baseline, every preflight condition, or reviewer identity authenticity |
+| `local-records-consistent` | Retained local events, metadata, and finding snapshots have internally consistent hash relationships | History was not deleted/replaced or witnessed by a trusted third party |
+| `current` | A finding's bound baseline is the active baseline; preflight separately checks that the target worktree is clean and `HEAD` has not drifted | Code is faithful, an experiment is fair, or risk-free |
+| `preflight-passed` | Current G0, Git baseline, and retained local records passed this preflight | Any finding/evidence exists, findings reached closure, or a conclusion was approved |
+| `preflight-current` | Preflight passed and the report has no stale finding from an older baseline; this can be true with zero findings or evidence | A substantive audit is complete, evidence is sufficient, or a scientific claim may be published |
+| `preflight-not-current` | Preflight did not pass, or the report still contains stale findings from an older baseline; inspect `preflight_issue` and the stale count | Every local record is corrupt or a scientific conclusion is false |
+| `verified` / `closed` | A finding followed a legal declared transition and met its recorded-evidence, current-baseline, and preflight gates | Evidence is true, sufficient, or independent, or the system/third party verified the repair or conclusion |
 
-`structure`, `ledger`, `current`, and `review-ready` describe records and process only. **They—and `audit lint` and `audit verify`—are not a scientific PASS.**
+These states describe declarations, retained records, and process only. **They—and `audit lint` and `audit verify`—are not a scientific PASS.**
 
 ## Limits of hash chains, identity, and security
 
@@ -181,6 +185,8 @@ A local hash chain only makes edits, reorderings, or breaks easier to notice in 
 - provide access control, confidentiality, legal compliance, or scientific validity.
 
 Before a lifecycle action writes anything public, it validates the prospective snapshot, event count, and byte capacity. It then writes and syncs a short-lived `.rcsl-audit-pending.json` intent before replacing the snapshot and event ledger. If a process, disk, or machine fails in the middle, ordinary reads and writes fail closed and direct the operator to `rcsl audit recover WORKSPACE`. Recovery performs one deterministic roll-forward without appending the same event twice. An unknown third file state is still refused and requires preservation and human inspection. Do not “repair” history by editing JSON or recomputing hashes.
+
+`.rcsl-write.lock` is a persistent fixed advisory-lock file, not stale state to delete. Cooperating local POSIX processes use shared/exclusive `flock`, and the operating system releases the lock when a process exits. This coordination does not cover non-POSIX environments or stop non-cooperating same-privilege writers.
 
 Capacity prechecks, a recoverable commit intent, per-file atomic replacement and directory sync, together with pinned-directory initialization/report writes, exclusive creation, identity rechecks, and POSIX `0600`, are fail-closed defenses against half-commits, accidental overwrites, and common local path-replacement races. They are not a general transactional database, digital signature, ACL, or a boundary against a malicious local writer.
 

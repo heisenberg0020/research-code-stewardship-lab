@@ -90,7 +90,7 @@ python scripts/rcsl.py audit status "$WORKSPACE"
 
 This creates the workspace needed for a G0 contract, structured findings, evidence, and a local event chain through pinned-directory, exclusive writes. G0 starts as `draft`; a human must complete it and record a gate decision before preflight can succeed. `audit report build` likewise pins workspace identity and refuses overwrite, writing reports as `0600` on POSIX. See the full [Mode Audit guide](docs/AUDIT_MODE_EN.md).
 
-Mode Audit **does not execute target-project code, use the network, or modify the target project by default**. `--actor` and `--reviewer` are unauthenticated record labels. The hash chain checks only the internal consistency of retained local records. No `current`, `ledger-consistent`, or `review-ready` state is a scientific PASS.
+Mode Audit **does not execute target-project code, use the network, or modify the target project by default**. `--actor` and `--reviewer` are unauthenticated record labels. The hash chain checks only the internal consistency of retained local records. No `current`, `local-records-consistent`, or `preflight-current` state is a scientific PASS; the finding values `verified` and `closed` are also declared lifecycle states, not independent verification or scientific approval.
 
 Every workflow now uses the explicit `train` / `audit` / `export` / `package` namespaces. Legacy top-level commands and the static-view surface that lacked field-validated demand have been pruned from the active product.
 
