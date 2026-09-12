@@ -436,6 +436,57 @@ class AuditLifecycleTests(unittest.TestCase):
         with self.assertRaisesRegex(AuditError, "hash does not match"):
             verify_audit_workspace(self.workspace)
 
+    def test_schema_versions_and_event_sequences_require_exact_integers(self) -> None:
+        self._new_finding()
+        metadata_path = self.workspace / "audit-workspace.json"
+        event_path = self.workspace / "audit-events.jsonl"
+        finding_path = self.workspace / "findings" / "F-001.json"
+        original_metadata = metadata_path.read_bytes()
+        original_events = event_path.read_bytes()
+        original_finding = finding_path.read_bytes()
+
+        cases = (
+            ("metadata-version", metadata_path, ("schema_version",), True, "lifecycle schema"),
+            (
+                "lifecycle-version",
+                metadata_path,
+                ("audit_lifecycle", "schema_version"),
+                2.0,
+                "lifecycle schema",
+            ),
+            ("finding-version", finding_path, ("schema_version",), True, "finding schema"),
+            ("event-sequence", event_path, (0, "seq"), 1.0, "schema version or sequence"),
+        )
+        for name, path, components, invalid, message in cases:
+            with self.subTest(name=name):
+                metadata_path.write_bytes(original_metadata)
+                event_path.write_bytes(original_events)
+                finding_path.write_bytes(original_finding)
+                if path == event_path:
+                    payload = [
+                        json.loads(line)
+                        for line in original_events.decode("utf-8").splitlines()
+                    ]
+                else:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                target = payload
+                for component in components[:-1]:
+                    target = target[component]
+                target[components[-1]] = invalid
+                if path == event_path:
+                    path.write_text(
+                        "".join(json.dumps(item) + "\n" for item in payload),
+                        encoding="utf-8",
+                    )
+                else:
+                    path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+                with self.assertRaisesRegex(AuditError, message):
+                    verify_audit_workspace(self.workspace)
+
+        metadata_path.write_bytes(original_metadata)
+        event_path.write_bytes(original_events)
+        finding_path.write_bytes(original_finding)
+
     def test_verify_replays_event_semantics_even_after_rehashing(self) -> None:
         self._new_finding()
         event_path = self.workspace / "audit-events.jsonl"

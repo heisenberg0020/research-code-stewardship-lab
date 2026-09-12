@@ -5,7 +5,7 @@
 | 字段 | 当前记录 |
 | --- | --- |
 | Case ID | `rcsl/llm4sbr-research-audit-v2` |
-| 发布状态 | `current · Open Demo` |
+| 发布状态 | `current · Open Demo · historically-public` |
 | 版本依据 | 本仓库 Git commit；导出审计证据时记录准确 commit |
 | 维护责任 | 本仓库维护者 |
 | 教学目的 | 训练从算法语义到 Agent 治理的基于证据的人工判断 |
@@ -58,6 +58,20 @@ python LLM4SBR_research_audit_training_v2/run_all_public_checks.py
 ## 发布与隔离边界
 
 本案例与教师侧相关的材料位于同一个公开 Git 仓库，因此隔离方式是 **honor isolation**，不是访问控制。它适合教学演示、流程练习和回归测试，但不应描述为安全的 Blind Challenge。真正盲测必须采用独立的公开 Challenge Package、受控 Evaluator Package 和受控 Maintainer Record。
+
+本案例和相关 Git 历史已经公开，因而不具备 never-public 资格。重新压缩、移动、加密、改名或调用分包工具都不能让它成为未见题。它只能使用 Open Demo 导出：
+
+```bash
+python scripts/rcsl.py export open-demo \
+  --output /absolute/path/to/new-open-demo-bundle \
+  --actor "maintainer label" \
+  --run-public-checks
+python scripts/rcsl.py export verify /absolute/path/to/new-open-demo-bundle
+```
+
+导出生成边界说明、manifest、checksums、验证记录、撤回模板和独立 public verifier。`--run-public-checks` 可省略，但记录必须忠实说明本次是否实际运行检查。导出时先冻结所选公开源树，检查针对该快照执行；`source_tree_sha256` 绑定实际路径、字节、大小和可执行位，`source_revision_scope` 与 `repository_worktree_state` 则记录 Git revision 的有限含义以及源 worktree 的 `clean`/`dirty` 状态。bundle 内 verifier 会检查精确根目录文件集、manifest/payload 和边界字段；从受信任 RCSL checkout 运行 `export verify` 还会逐字节核对该工具版本生成的 verifier 与 boundary。归档旧 bundle 时应保留对应 RCSL revision；新版工具若受信任字节发生变化会 fail closed。导出或验证成功只表示保留的公开 bundle 满足本地发布契约；checksum 不是签名，public verifier 也不证明科学正确性、教学有效性或答案保密。
+
+`package blind` 仅适用于另一个全新且从未公开、三类来源从创建时即分离的案例。其输出状态也只能是 `assembled-awaiting-controlled-placement`，仍需受控存储、最小权限、人工泄题审查、独立评测、具名发布签署和泄漏撤回演练。详见 [案例发布模型](../docs/CASE_RELEASE_MODEL.md)。
 
 ## 复审触发条件
 

@@ -281,7 +281,12 @@ def _validate_event_chain(events: list[dict[str, object]]) -> None:
     for sequence, event in enumerate(events, start=1):
         if set(event) != expected_keys:
             raise AuditError(f"event {sequence} has an unexpected schema")
-        if event.get("schema_version") != SCHEMA_VERSION or event.get("seq") != sequence:
+        if (
+            type(event.get("schema_version")) is not int
+            or event.get("schema_version") != SCHEMA_VERSION
+            or type(event.get("seq")) is not int
+            or event.get("seq") != sequence
+        ):
             raise AuditError(f"event {sequence} has an invalid schema version or sequence")
         if event.get("prev_hash") != previous_hash:
             raise AuditError(f"event {sequence} breaks the previous-hash chain")
@@ -459,12 +464,12 @@ def _assert_research_contract_complete(workspace: Path) -> None:
 
 
 def _lifecycle_from_metadata(metadata: dict[str, object]) -> dict[str, object]:
-    if metadata.get("schema_version") != SCHEMA_VERSION:
+    if type(metadata.get("schema_version")) is not int or metadata.get("schema_version") != SCHEMA_VERSION:
         raise AuditError("audit workspace does not use lifecycle schema v2")
     lifecycle = metadata.get("audit_lifecycle")
     if not isinstance(lifecycle, dict):
         raise AuditError("audit workspace is not bound to a Git project")
-    if lifecycle.get("schema_version") != SCHEMA_VERSION:
+    if type(lifecycle.get("schema_version")) is not int or lifecycle.get("schema_version") != SCHEMA_VERSION:
         raise AuditError("audit lifecycle schema version is not supported")
     if lifecycle.get("validator_scope") != "integrity_only":
         raise AuditError("audit lifecycle validator scope is not recognized")
@@ -558,7 +563,7 @@ def _validate_finding(finding: object, *, expected_id: str | None = None) -> dic
     for field in required:
         if field not in finding:
             raise AuditError(f"finding is missing required field: {field}")
-    if finding.get("schema_version") != SCHEMA_VERSION:
+    if type(finding.get("schema_version")) is not int or finding.get("schema_version") != SCHEMA_VERSION:
         raise AuditError("finding schema version is not supported")
     finding_id = _require_text(finding.get("id"), "finding id")
     if not FINDING_ID_PATTERN.fullmatch(finding_id):
@@ -771,7 +776,7 @@ def bind_audit(
         raise AuditError("audit workspace must be outside the bound Git project")
     if "audit_lifecycle" in metadata:
         raise AuditError("audit workspace is already bound")
-    if metadata.get("schema_version") not in (1, SCHEMA_VERSION):
+    if type(metadata.get("schema_version")) is not int or metadata.get("schema_version") not in (1, SCHEMA_VERSION):
         raise AuditError("audit workspace schema version is not supported for binding")
 
     findings_directory = workspace_path / FINDINGS_DIRECTORY_NAME

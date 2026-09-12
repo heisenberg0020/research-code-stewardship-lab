@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "manifest_type": "rcsl-blind-source",
+  "release_id": "replace-release-id",
+  "case_id": "replace-case-id",
+  "case_version": "0.0.0",
+  "release_mode": "blind-challenge",
+  "created_at": "1970-01-01T00:00:00Z",
+  "novelty_attestation": {
+    "state": "human-declared-never-public",
+    "reviewer": "REPLACE: declared human reviewer and role; identity is not authenticated",
+    "reviewed_at": "1970-01-01T00:00:00Z",
+    "evidence_refs": [
+      "REPLACE: novelty review record and source-comparison evidence"
+    ]
+  },
+  "source_bindings": {
+    "challenge": {
+      "revision": "REPLACE: immutable Challenge source revision",
+      "revision_type": "content-digest",
+      "clean_state": "human-declared-clean",
+      "root_digest": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "evaluator": {
+      "revision": "REPLACE: immutable Evaluator source revision",
+      "revision_type": "content-digest",
+      "clean_state": "human-declared-clean",
+      "root_digest": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "maintainer": {
+      "revision": "REPLACE: immutable Maintainer source revision",
+      "revision_type": "content-digest",
+      "clean_state": "human-declared-clean",
+      "root_digest": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "package_files": {
+    "challenge": [
+      {
+        "path": "LICENSE",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size": 0,
+        "executable": false,
+        "role": "challenge",
+        "license_id": "release-license",
+        "sensitivity": "public"
+      },
+      {
+        "path": "REPLACE-WITH-CHALLENGE-FILE.txt",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size": 0,
+        "executable": false,
+        "role": "challenge",
+        "license_id": "release-license",
+        "sensitivity": "public"
+      }
+    ],
+    "evaluator": [
+      {
+        "path": "LICENSE",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size": 0,
+        "executable": false,
+        "role": "evaluator",
+        "license_id": "release-license",
+        "sensitivity": "controlled-evaluator"
+      },
+      {
+        "path": "REPLACE-WITH-EVALUATOR-FILE.txt",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size": 0,
+        "executable": false,
+        "role": "evaluator",
+        "license_id": "release-license",
+        "sensitivity": "controlled-evaluator"
+      }
+    ],
+    "maintainer": [
+      {
+        "path": "LICENSE",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size": 0,
+        "executable": false,
+        "role": "maintainer",
+        "license_id": "release-license",
+        "sensitivity": "controlled-maintainer"
+      },
+      {
+        "path": "REPLACE-WITH-MAINTAINER-FILE.txt",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size": 0,
+        "executable": false,
+        "role": "maintainer",
+        "license_id": "release-license",
+        "sensitivity": "controlled-maintainer"
+      }
+    ]
+  },
+  "licenses": [
+    {
+      "id": "release-license",
+      "terms": "REPLACE: exact license terms or SPDX expression",
+      "redistribution": "allowed",
+      "notice_path": "LICENSE",
+      "approval_ref": "REPLACE: declared human license gate evidence reference"
+    }
+  ],
+  "scoring": {
+    "protocol_id": "replace-scoring-protocol-id",
+    "version": "0.0.0",
+    "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "automatic_scope": "REPLACE: schema, completeness, operability, and other non-semantic checks only",
+    "human_gate": "REPLACE: named human evaluation required for semantic, scientific, and maturity judgments",
+    "independent_reviewer_ref": "REPLACE: independent scoring-protocol review evidence"
+  },
+  "isolation": {
+    "challenge_audience": "Allowlist: learner-facing Challenge Package paths only; deny Evaluator and Maintainer Package paths.",
+    "evaluator_audience": "Allowlist: Challenge and Evaluator Package paths needed for controlled scoring; deny Maintainer Package paths.",
+    "maintainer_audience": "Allowlist: explicitly inventoried Challenge, Evaluator, and Maintainer Package paths needed to prepare or withdraw this release.",
+    "access_plan_ref": "REPLACE: external ACL, isolated host, or controlled-delivery plan; local staging and this declared allowlist are not access control",
+    "submission_channel_ref": "REPLACE: controlled learner-submission channel and retention boundary"
+  },
+  "validation": {
+    "public_record_refs": [
+      "REPLACE: Challenge Package public validation record"
+    ],
+    "controlled_record_refs": [
+      "REPLACE: controlled Evaluator and Maintainer validation record"
+    ],
+    "leakage_review_ref": "REPLACE: anti-leakage scan and declared human review",
+    "repeatability_review_ref": "REPLACE: repeated bounded validation evidence"
+  },
+  "withdrawal": {
+    "owner_label": "REPLACE: declared human withdrawal owner and role; identity is not authenticated",
+    "contact_or_process_ref": "REPLACE: controlled withdrawal contact or incident process",
+    "triggers": [
+      "provenance dispute",
+      "license conflict",
+      "design invalidity",
+      "answer leakage",
+      "package integrity failure"
+    ],
+    "procedure_ref": "REPLACE: revocation notice, containment, notification, and evidence-preservation procedure"
+  },
+  "claims_not_made": [
+    "Human declarations in this manifest authenticate identity, authority, or signatures.",
+    "Local staging or the declared role audiences enforce access control.",
+    "Validation proves semantic correctness, scientific validity, learner maturity, or certification.",
+    "The Challenge Package is guaranteed never to have been exposed or reconstructed.",
+    "The license gate is legal advice or a complete rights determination."
+  ],
+  "human_approvals": [
+    {
+      "gate": "provenance",
+      "reviewer": "REPLACE: declared human reviewer and role; identity is not authenticated",
+      "reviewed_at": "1970-01-01T00:00:00Z",
+      "rationale": "REPLACE: evidence-bound provenance decision",
+      "evidence_refs": [
+        "REPLACE: provenance evidence reference"
+      ]
+    },
+    {
+      "gate": "license",
+      "reviewer": "REPLACE: declared human reviewer and role; identity is not authenticated",
+      "reviewed_at": "1970-01-01T00:00:00Z",
+      "rationale": "REPLACE: evidence-bound license and redistribution decision",
+      "evidence_refs": [
+        "REPLACE: license evidence reference"
+      ]
+    },
+    {
+      "gate": "design",
+      "reviewer": "REPLACE: declared human reviewer and role; identity is not authenticated",
+      "reviewed_at": "1970-01-01T00:00:00Z",
+      "rationale": "REPLACE: evidence-bound challenge design decision",
+      "evidence_refs": [
+        "REPLACE: approved design and independent review reference"
+      ]
+    },
+    {
+      "gate": "leakage",
+      "reviewer": "REPLACE: declared human reviewer and role; identity is not authenticated",
+      "reviewed_at": "1970-01-01T00:00:00Z",
+      "rationale": "REPLACE: evidence-bound anti-leakage decision",
+      "evidence_refs": [
+        "REPLACE: leakage scan and review reference"
+      ]
+    },
+    {
+      "gate": "release-preparation",
+      "reviewer": "REPLACE: declared human reviewer and role; identity is not authenticated",
+      "reviewed_at": "1970-01-01T00:00:00Z",
+      "rationale": "REPLACE: evidence-bound release preparation decision",
+      "evidence_refs": [
+        "REPLACE: package validation, repeatability, and handoff reference"
+      ]
+    }
+  ]
+}

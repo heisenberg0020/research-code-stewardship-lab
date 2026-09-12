@@ -7,7 +7,7 @@
 ## 不可绕过的边界
 
 - 审计绑定的是一个**具体 Git `HEAD` commit**，不是“某个目录的大致当前状态”。
-- `PROJECT` 必须是 clean Git 工作树；`WORKSPACE` 必须在项目目录之外，且 `init` 的输出路径必须不存在。
+- `PROJECT` 必须是 clean Git 工作树；`WORKSPACE` 必须在项目目录之外，`init` 的输出路径必须不存在，而且其直接父目录必须已经存在并可访问。
 - 默认只读取目标项目和 Git 元数据。所有新记录只写入 `WORKSPACE`。
 - G0 是人类填写、复核和记录的**声明式研究契约**。`--actor` 和 `--reviewer` 是本地可追溯标签，**不是**身份认证、签名或访问控制。
 - 要运行项目、联网、访问额外/受保护材料、修改源码或使用更大预算，须采用另一套明确授权的工具流程；这些操作不由 Mode Audit 隐式执行。
@@ -30,7 +30,7 @@ clean Git commit + G0 draft
 → local verify + rendered review report
 ```
 
-`audit init` 创建以下公开模板，并把 G0 gate 初始设为 `draft`：
+`audit init` 创建以下公开模板，并把 G0 gate 初始设为 `draft`。初始化会固定已解析父目录和新工作区的目录句柄，以相对、no-follow、exclusive-create 写入；结束前复核新目录的 device/inode 身份，因此路径在创建中被替换或重定向时会 fail closed，不会覆盖重定向目标中的同名文件。
 
 | 本地产物 | 用途 |
 | --- | --- |
@@ -47,7 +47,7 @@ clean Git commit + G0 draft
 | 命令 | 作用与关键前置条件 | 不代表什么 |
 | --- | --- | --- |
 | `rcsl train overview`；`rcsl train doctor`；`rcsl train start --level 1..4`；`rcsl train validate` | Mode Train 的课程导航、环境诊断、分级入口和公开检查 | 训练模型或给出科学 verdict |
-| `rcsl audit init --project PROJECT --output WORKSPACE --level 1..4 --actor ACTOR [--reason TEXT]` | 拒绝 dirty/non-Git 项目及项目内 workspace；绑定 clean `HEAD`；创建 G0 `draft` | 认证 actor、执行项目、批准 G0 或任何结论 |
+| `rcsl audit init --project PROJECT --output WORKSPACE --level 1..4 --actor ACTOR [--reason TEXT]` | 要求已存在的直接父目录；拒绝 dirty/non-Git 项目、项目内 workspace 和已有输出；以固定父/工作区目录句柄独占写入并绑定 clean `HEAD`；创建 G0 `draft` | 认证 actor、执行项目、批准 G0 或任何结论 |
 | `rcsl audit status WORKSPACE [--json]` | 读取绑定、G0、finding、ledger、preflight 摘要 | 判断科学正确性 |
 | `rcsl audit lint WORKSPACE` | 仅当**四份模板都完整**（必需标题、无未替换 `{{...}}`）时报告完整 | 批准 G0 或判断 finding 成立 |
 | `rcsl audit gate check WORKSPACE [--json]` | 检查 research contract 是否完整、当前 bytes 是否匹配已记录 gate | 授予权限或认证 reviewer |
@@ -59,7 +59,7 @@ clean Git commit + G0 draft
 | `rcsl audit finding transition WORKSPACE --finding ID --to open\|triaged\|accepted\|mitigated\|verified\|closed\|dismissed\|blocked --actor ACTOR --rationale TEXT` | 追加合法、有理由的状态转换 | 擦除先前记录或自动认定修复可信 |
 | `rcsl audit evidence add WORKSPACE --finding ID --id ID --kind asserted\|observed\|derived\|reproduced\|contradicted --reference TEXT --summary TEXT --actor ACTOR` | 在已通过 preflight 的当前基线上追加 typed evidence | 证明证据充分、独立或无偏 |
 | `rcsl audit verify WORKSPACE [--json]` | 检查本地 metadata、snapshots 和 hash-chain 一致性 | 验证远程历史、身份或科学结论 |
-| `rcsl audit report build WORKSPACE --output PATH [--format markdown\|json]` | 在 workspace 根目录中创建一个**不存在**的 Markdown/JSON review record（默认 Markdown）；不接受子目录、外部路径，以及大小写不敏感匹配 `.rcsl-write.lock`、`audit-workspace.json`、`audit-events.jsonl` 或四份模板的保留文件名 | 创建 scientific PASS 或发布批准 |
+| `rcsl audit report build WORKSPACE --output PATH [--format markdown\|json]` | 在 workspace 根目录中以 exclusive-create 创建一个**不存在**的 Markdown/JSON review record（默认 Markdown）；在 POSIX 上输出为 `0600`；固定并复核 workspace 目录身份，不接受 symlink、子目录、外部路径，以及大小写不敏感匹配 `.rcsl-write.lock`、`audit-workspace.json`、`audit-events.jsonl` 或四份模板的保留文件名 | 创建 scientific PASS、签名或发布批准 |
 
 ### G0、lint 与 preflight 的区别
 
@@ -180,6 +180,8 @@ Rebaseline 会使旧 findings 成为 `stale`，并将 G0 重新设为 `draft`。
 - 提供访问控制、保密性、法律合规或科学有效性。
 
 一次生命周期动作会更新 snapshot 并追加 event；它们不是跨文件数据库事务。如果进程、磁盘或机器在多文件写入中途故障，下一次 `verify` 会 fail closed，工作区也可能保留 `.rcsl-write.lock`。此时应先保留/备份现场并人工检查，不要通过手改或重算 hash 来“修复”历史。
+
+工作区初始化与报告导出的固定目录句柄、独占创建、身份复核和 POSIX `0600` 是防止本地意外覆盖与常见路径替换竞态的 fail-closed 措施；它们不是事务数据库、数字签名、ACL 或恶意本机写入者无法绕过的安全边界。
 
 需要更强保证时，应另行采用受控存储、代码托管审计记录、签名、独立复核和组织政策；这些能力不能被描述成默认 CLI 防护。
 

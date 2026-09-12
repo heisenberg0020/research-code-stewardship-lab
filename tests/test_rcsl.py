@@ -4,11 +4,13 @@ from contextlib import redirect_stderr, redirect_stdout
 import importlib.util
 import io
 import json
+import os
 import re
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -202,6 +204,56 @@ class AuditWorkspaceTests(unittest.TestCase):
         self.assertIn("Refusing to overwrite", stderr)
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "unchanged")
 
+    def test_init_directory_swap_cannot_overwrite_redirect_target(self) -> None:
+        workspace = self.root / "swapped-audit"
+        displaced = self.root / "displaced-audit"
+        redirect_target = self.root / "redirect-target"
+        redirect_target.mkdir()
+        sentinels = {}
+        for filename in (*TEMPLATE_CONTENTS, self.module.WORKSPACE_METADATA_NAME):
+            sentinel = redirect_target / filename
+            sentinel.write_text(f"keep {filename}\n", encoding="utf-8")
+            sentinels[filename] = sentinel.read_bytes()
+
+        real_mkdir = os.mkdir
+        swapped = False
+
+        def swap_after_create(path, mode=0o777, *, dir_fd=None):
+            nonlocal swapped
+            result = real_mkdir(path, mode, dir_fd=dir_fd)
+            if path == workspace.name and dir_fd is not None and not swapped:
+                os.rename(
+                    workspace.name,
+                    displaced.name,
+                    src_dir_fd=dir_fd,
+                    dst_dir_fd=dir_fd,
+                )
+                os.symlink(
+                    redirect_target,
+                    workspace.name,
+                    dir_fd=dir_fd,
+                    target_is_directory=True,
+                )
+                swapped = True
+            return result
+
+        with mock.patch.object(self.module.os, "mkdir", side_effect=swap_after_create):
+            returncode, stdout, stderr = run_module_cli(
+                self.module,
+                "init-audit",
+                "--level",
+                "1",
+                "--output",
+                str(workspace),
+            )
+
+        self.assertTrue(swapped)
+        self.assertEqual(returncode, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("No existing file was overwritten", stderr)
+        for filename, expected in sentinels.items():
+            self.assertEqual((redirect_target / filename).read_bytes(), expected)
+
     def test_incomplete_workspace_fails_lint_but_status_reports_progress(self) -> None:
         workspace = self.initialize_workspace()
 
@@ -213,6 +265,23 @@ class AuditWorkspaceTests(unittest.TestCase):
         returncode, stdout, stderr = run_module_cli(self.module, "status-audit", str(workspace))
         self.assertEqual(returncode, 0, stderr)
         self.assertIn("Template progress: 0/4", stdout)
+
+    def test_workspace_metadata_requires_exact_integer_schema_and_level(self) -> None:
+        for field, value, message in (
+            ("schema_version", True, "schema_version is not supported"),
+            ("level", True, "level is not a supported"),
+        ):
+            with self.subTest(field=field):
+                workspace = self.initialize_workspace(f"invalid-{field}")
+                metadata_path = workspace / self.module.WORKSPACE_METADATA_NAME
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                metadata[field] = value
+                metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+                inspection = self.module.inspect_audit_workspace(workspace)
+                self.assertIsNotNone(inspection)
+                self.assertTrue(
+                    any(message in issue for issue in inspection.general_issues)
+                )
 
     def test_completed_workspace_passes_structural_lint(self) -> None:
         workspace = self.initialize_workspace()
@@ -450,6 +519,8 @@ class DualModeCliTests(unittest.TestCase):
         self.assertEqual(report.returncode, 0, report.stderr)
         self.assertIn("not a scientific PASS", report.stdout)
         self.assertIn("Report status: **REVIEW-READY**", report_path.read_text(encoding="utf-8"))
+        if os.name == "posix":
+            self.assertEqual(report_path.stat().st_mode & 0o777, 0o600)
 
         duplicate_report = run_cli(
             "audit",
@@ -511,10 +582,47 @@ class DualModeCliTests(unittest.TestCase):
         legacy_lint = run_cli("lint-audit", str(self.workspace))
         self.assertEqual(legacy_lint.returncode, 0, legacy_lint.stdout + legacy_lint.stderr)
         self.assertIn("Structure status: COMPLETE", legacy_lint.stdout)
-
         self.assertEqual(self._git("rev-parse", "HEAD"), original_head)
         self.assertEqual(self._git("status", "--porcelain"), original_status)
         self.assertEqual((self.project / "README.md").read_bytes(), original_readme)
+
+    def test_report_workspace_swap_cannot_redirect_or_overwrite_output(self) -> None:
+        self._initialize_bound_workspace()
+        module = load_rcsl_module()
+        displaced = self.root / "displaced-workspace"
+        redirect_target = self.root / "report-redirect"
+        redirect_target.mkdir()
+        report_name = "review-race.md"
+        sentinel = redirect_target / report_name
+        sentinel.write_text("do not overwrite\n", encoding="utf-8")
+
+        def swap_workspace(_workspace):
+            self.workspace.rename(displaced)
+            self.workspace.symlink_to(redirect_target, target_is_directory=True)
+            return "# Rendered report\n"
+
+        with mock.patch.object(
+            module.audit_core,
+            "render_report_markdown",
+            side_effect=swap_workspace,
+        ):
+            returncode, stdout, stderr = run_module_cli(
+                module,
+                "audit",
+                "report",
+                "build",
+                str(self.workspace),
+                "--output",
+                str(self.workspace / report_name),
+                "--format",
+                "markdown",
+            )
+
+        self.assertEqual(returncode, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("identity changed", stderr)
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "do not overwrite\n")
+        self.assertFalse((displaced / report_name).exists())
 
     def test_dirty_project_is_refused_before_workspace_creation(self) -> None:
         (self.project / "dirty.txt").write_text("uncommitted\n", encoding="utf-8")

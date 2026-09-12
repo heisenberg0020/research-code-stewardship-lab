@@ -978,7 +978,7 @@ def _validate_progress(
         )
 
     _expect_exact_keys(progress, TOP_LEVEL_KEYS, field="progress")
-    if progress["schema_version"] != SCHEMA_VERSION or isinstance(progress["schema_version"], bool):
+    if type(progress["schema_version"]) is not int or progress["schema_version"] != SCHEMA_VERSION:
         raise TrainingError(f"unsupported progress schema version: {progress['schema_version']!r}")
     if progress["workspace_type"] != WORKSPACE_TYPE:
         raise TrainingError("not an RCSL training-progress workspace")

@@ -158,6 +158,10 @@ python scripts/rcsl.py train progress export \
 
 `--format` is `markdown` or `json`. The export omits the learner label, worksheet snapshots, and free-form feedback/gap text that may contain identity data; it retains only whether a gap was recorded. Reviewer labels become aliases such as `reviewer-1`. Structure state, the latest submission digest, current human decisions, and maturity observations remain. Full feedback stays local in `progress.json` and `status --json`. The export is a readable record, not a certificate, signature, or scientific `PASS`.
 
+### Do not confuse the two export operations
+
+`train progress export` creates a redacted summary for one learner. The case-maintainer command `python scripts/rcsl.py export open-demo ...` creates a separate directory-level public release bundle; the formats are not interchangeable. The latter freezes the public source tree for that build, runs selected checks against the snapshot, binds the exported content with `source_tree_sha256`, and requires an exact root/payload; repository-side verification also checks the trusted verifier and boundary. None of that is a learning-progress record. The former cannot release a case, and the latter is not a personal transcript. Neither creates or certifies a Blind Challenge. The current LLM4SBR case is already public and can only remain an Open Demo. See the [case release model](CASE_RELEASE_MODEL_EN.md) for release boundaries.
+
 ## Record and trust boundaries
 
 - `progress.json` is atomically replaced in one write, with a local exclusive lock to prevent concurrent writers. If a lock is left behind unexpectedly, first confirm that no writer is active and then follow the error guidance.
