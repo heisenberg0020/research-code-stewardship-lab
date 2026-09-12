@@ -14,6 +14,8 @@ Canonical entry points are `python scripts/rcsl.py train ...` and `python script
 - `docs/TRAIN_MODE_EN.md`: English version of the Mode Train progress guide.
 - `docs/AUDIT_MODE.md`: Chinese command and boundary guide for the real-project audit lifecycle.
 - `docs/AUDIT_MODE_EN.md`: English version of the Mode Audit guide.
+- `docs/PROJECT_CHARTER.md`: Chinese long-term mission, anti-drift gate, and stop conditions.
+- `docs/PROJECT_CHARTER_EN.md`: English version of the project charter.
 - `docs/DUAL_MODE_ROADMAP.md`: Chinese phased implementation plan for the shared Train/Audit system.
 - `docs/DUAL_MODE_ROADMAP_EN.md`: English version of the dual-mode roadmap.
 - `docs/COMPETENCY_MODEL.md`: Chinese G0 + L1–L4 + seven cross-level capabilities and maturity model.
@@ -25,7 +27,7 @@ Canonical entry points are `python scripts/rcsl.py train ...` and `python script
 - `scripts/rcsl.py`: unified CLI. `train overview|doctor|start|validate` covers course navigation and public checks; `train progress init|status|check|submit|review|export` covers local learning records; `audit init|status|lint|gate|preflight|rebaseline|finding|evidence|verify|report` covers the real-project lifecycle; `export open-demo|verify` and `package blind|verify` cover local release artifacts.
 - `stewardship_lab/audit.py`: standard-library audit core for clean-Git binding, G0 gates, structured findings/evidence, allowed state transitions, baseline drift, local hash-chain verification, and report data/rendering.
 - `stewardship_lab/training.py`: standard-library training-progress core for external workspaces, structural worksheet checks, immutable attempt snapshots, named human reviews, retries, local consistency verification, and redacted exports.
-- `stewardship_lab/release.py`: standard-library release core for frozen-snapshot Open Demo export; exact root/payload and trusted verifier/boundary checks; source-tree/revision/worktree-state binding; strict no-float JSON and SemVer; and private three-package Blind staging with external private manifest/source prerequisites, executable-aware inventories, role-filtered licenses, build-record implementation digests, bounded leakage/path refusal, standalone capacity/traversal fail-closed behavior, and POSIX-mode checks.
+- `stewardship_lab/release.py`: frozen-snapshot Open Demo export and local three-role Blind staging; it is a maintenance-only Phase 3A helper whose detailed contract lives in the case release model.
 - `stewardship_lab/__init__.py`: public package boundary for the stewardship cores.
 - `LLM4SBR_research_audit_training_v2/`: the four-level training package and its course hub.
   - `CASE_FILE.md` / `CASE_FILE_EN.md`: versioned scope, provenance, G0 boundary, Open Demo status, and review triggers for the current case.
@@ -67,29 +69,17 @@ Mode Audit
   └─ external workspace: templates + audit-workspace.json + findings/ + audit-events.jsonl
 
 Case release
-  export open-demo → frozen public snapshot + boundary + manifest + checksums
-                   → source-tree/revision/worktree record + validation record
-                   → revocation template + standalone public verifier
-  export verify    → exact root/payload + trusted verifier/boundary bytes
-
-  package blind    → external private sources/manifest + strict JSON/SemVer
-                   → executable-aware exact allowlists + BUILD_RECORD tool bindings
-                   → private 0700 staging in assembled-awaiting-controlled-placement state
-                   ├─ challenge/   participant-safe learner-facing package
-                   ├─ evaluator/   controlled evaluation package
-                   └─ maintainer/  controlled provenance/governance record
-  package verify   → maintainer-side verification of all three staged packages
-                   → exact role payloads + trusted verifier/boundary bytes
-                   → role inventories/licenses + bounded leakage + POSIX private modes (not ACLs)
-  role self-check  → each role runs only its own verify_package.py
-                   → bounded capacity/traversal; no sibling package required
+  export open-demo / verify → frozen local public bundle contract
+  package blind / verify    → local three-role private staging contract
+  └─ maintenance-only; not a third mode, release service, ACL, or confidentiality proof
 
 Shared governance
-  docs/COMPETENCY_MODEL*.md + docs/CASE_RELEASE_MODEL*.md
+  docs/PROJECT_CHARTER*.md + docs/COMPETENCY_MODEL*.md
+  docs/DUAL_MODE_ROADMAP*.md + docs/CASE_RELEASE_MODEL*.md
   skills/research-code-audit-training/
 ```
 
-Mode Audit does **not execute target-project code, use the network, or modify the target project by default**. `audit init` requires an already-existing parent and creates the new workspace through pinned directory descriptors and exclusive writes; `audit report build` pins workspace identity, refuses overwrite, and writes `0600` on POSIX. These are local fail-closed controls, not access control. Actor/reviewer values are unauthenticated labels, and the hash chain checks internal consistency only for retained local records; every scoped state—including `current`, `ledger-consistent`, and `review-ready`—is not a scientific PASS.
+Mode Audit does **not execute target-project code, use the network, or modify the target project by default**. `audit init` requires an already-existing parent and creates the new workspace through pinned directory descriptors and exclusive writes; `audit report build` pins workspace identity, refuses overwrite, and writes `0600` on POSIX. These are local fail-closed controls, not access control. Actor/reviewer values are unauthenticated labels, and the hash chain checks internal consistency only for retained local records; every scoped state—including `current`, `local-records-consistent`, and `preflight-current`—is not a scientific PASS. Finding values `verified` and `closed` remain declared lifecycle labels rather than independent verification.
 
 ## Current implementation status
 
@@ -103,7 +93,7 @@ Status terms follow the [roadmap](docs/DUAL_MODE_ROADMAP_EN.md): `implemented` m
 - Mode Train progress lifecycle: implemented with an external resumable `progress.json`, separate structure/attempt/human-review states, immutable attempt snapshots, retry history, reviewer disagreement, explicit evidence gaps, a public synthetic capstone, and redacted Markdown/JSON export.
 - Capstone pass gate: implemented as a named human record; structural completeness cannot pass it, and the CLI does not generate a maturity or scientific verdict.
 - Real-project Mode Audit lifecycle: implemented for clean Git binding, draft/approved/blocked G0, status/lint/preflight, rebaseline, structured findings and evidence, constrained transitions, local integrity verification, and non-overwriting Markdown/JSON reports.
-- Phase 3A local release tooling: implemented for the current historically public LLM4SBR Open Demo and for runtime-generated synthetic, never-public three-package staging. Verification enforces exact roots/payloads and trusted generated boundaries; Blind manifests/sources stay outside the public repository, strict no-float JSON, canonical UTC RFC 3339 timestamps, strict SemVer, and placeholder rules fail closed. Build records bind tool-revision scope/worktree state and packager/verifier bytes; every normally assembled role passes its own sibling-independent standalone verifier, which bounds capacity and fails on traversal errors or protected paths. POSIX private modes are checked locally. Repository-side trust is version-coupled, so archived artifacts must retain and use their corresponding tool revision if trusted bytes change. These establish manifest/checksum/package contracts only; they do not establish ACLs or confidentiality.
+- Phase 3A local release tooling: implemented and internally verified for Open Demo export and local three-role Blind staging contracts. It is frozen at maintenance-only scope; details live in `docs/CASE_RELEASE_MODEL*.md`, and no result establishes ACLs, confidentiality, or operational release.
 - Phase 3B controlled Blind operation: not implemented. No current RCSL case is asserted to be an operational Blind Challenge; independent private placement, least privilege, access records, frozen scoring, independent evaluation, human leakage review, release sign-off, and a leakage drill remain external human gates.
 - Phase 4 presentation/registry work: deferred and pruned from the active product after review. A historical prototype passed internal contract tests, but it had no field-validated demand and did not bind displayed cases to audit/training subjects strongly enough. Reconsider this layer only after the shared case identity model and real pilots are complete.
 
