@@ -359,7 +359,17 @@ class DualModeCliTests(unittest.TestCase):
 
         audit = run_cli("audit", "--help")
         self.assertEqual(audit.returncode, 0, audit.stderr)
-        for command in ("init", "status", "gate", "preflight", "finding", "evidence", "verify", "report"):
+        for command in (
+            "init",
+            "status",
+            "gate",
+            "preflight",
+            "finding",
+            "evidence",
+            "verify",
+            "recover",
+            "report",
+        ):
             self.assertIn(command, audit.stdout)
         self.assertIn("project code", audit.stdout)
         self.assertIn("scientific verdict", audit.stdout)
@@ -370,6 +380,12 @@ class DualModeCliTests(unittest.TestCase):
         original_readme = (self.project / "README.md").read_bytes()
         self._initialize_bound_workspace()
         self._complete_templates()
+
+        recovery = run_cli("audit", "recover", str(self.workspace), "--json")
+        self.assertEqual(recovery.returncode, 0, recovery.stderr)
+        recovery_payload = json.loads(recovery.stdout)
+        self.assertEqual(recovery_payload["operation_status"], "clean")
+        self.assertFalse(recovery_payload["recovery"]["recovered"])
 
         gate_check = run_cli("audit", "gate", "check", str(self.workspace), "--json")
         self.assertEqual(gate_check.returncode, 1, gate_check.stderr)
@@ -490,6 +506,8 @@ class DualModeCliTests(unittest.TestCase):
             self.workspace / "findings" / "report.md",
             self.workspace / ".rcsl-write.lock",
             self.workspace / ".RCSL-WRITE.LOCK",
+            self.workspace / ".rcsl-audit-pending.json",
+            self.workspace / ".RCSL-AUDIT-PENDING.JSON",
         ):
             refused_reserved = run_cli(
                 "audit",

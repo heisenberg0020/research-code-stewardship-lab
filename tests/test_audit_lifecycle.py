@@ -8,8 +8,12 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
+
+import stewardship_lab.audit as audit_core
 
 from stewardship_lab.audit import (
+    PENDING_COMMIT_NAME,
     _is_within,
     AuditError,
     add_evidence,
@@ -19,6 +23,7 @@ from stewardship_lab.audit import (
     inspect_clean_project,
     list_findings,
     preflight,
+    recover_audit,
     rebaseline,
     render_report_markdown,
     set_g0_gate,
@@ -426,6 +431,291 @@ class AuditLifecycleTests(unittest.TestCase):
                 actor="Auditor",
                 rationale="Open findings cannot skip directly to verification.",
             )
+
+    def test_snapshot_write_failure_is_explicitly_and_idempotently_recovered(self) -> None:
+        self._complete_contract()
+        event_path = self.workspace / "audit-events.jsonl"
+        event_count = len(event_path.read_text(encoding="utf-8").splitlines())
+        original_write = audit_core._atomic_write_text
+        failed = False
+
+        def fail_snapshot(path: Path, content: str) -> None:
+            nonlocal failed
+            if (
+                not failed
+                and path.name == "audit-workspace.json"
+                and (self.workspace / PENDING_COMMIT_NAME).exists()
+            ):
+                failed = True
+                raise AuditError("could not write audit-workspace.json: simulated ENOSPC")
+            original_write(path, content)
+
+        with mock.patch.object(audit_core, "_atomic_write_text", side_effect=fail_snapshot):
+            with self.assertRaisesRegex(AuditError, "audit recover"):
+                set_g0_gate(
+                    self.workspace,
+                    "approved",
+                    reviewer="Named Reviewer",
+                    rationale="Recover this interrupted gate decision.",
+                    actor="Named Reviewer",
+                )
+
+        self.assertTrue((self.workspace / PENDING_COMMIT_NAME).is_file())
+        with self.assertRaisesRegex(AuditError, "audit recover"):
+            verify_audit_workspace(self.workspace)
+        with self.assertRaisesRegex(AuditError, "audit recover"):
+            list_findings(self.workspace)
+
+        recovered = recover_audit(self.workspace)
+        self.assertEqual(recovered["status"], "recovered")
+        self.assertEqual(recovered["verification"]["event_count"], event_count + 1)
+        self.assertEqual(recovered["verification"]["g0_gate"]["status"], "approved")
+        self.assertFalse((self.workspace / PENDING_COMMIT_NAME).exists())
+
+        clean = recover_audit(self.workspace)
+        self.assertEqual(clean["status"], "clean")
+        self.assertFalse(clean["recovered"])
+        self.assertEqual(clean["verification"]["event_count"], event_count + 1)
+
+    def test_pending_intent_write_failure_leaves_public_state_unchanged(self) -> None:
+        metadata_path = self.workspace / "audit-workspace.json"
+        event_path = self.workspace / "audit-events.jsonl"
+        before = {path: path.read_bytes() for path in (metadata_path, event_path)}
+        original_write = audit_core._atomic_write_text
+
+        def fail_pending(path: Path, content: str) -> None:
+            if path.name == PENDING_COMMIT_NAME:
+                raise AuditError("could not write pending commit: simulated ENOSPC")
+            original_write(path, content)
+
+        with mock.patch.object(audit_core, "_atomic_write_text", side_effect=fail_pending):
+            with self.assertRaisesRegex(AuditError, "simulated ENOSPC"):
+                set_g0_gate(
+                    self.workspace,
+                    "blocked",
+                    reviewer="Named Reviewer",
+                    rationale="No public file may change without a durable intent.",
+                    actor="Named Reviewer",
+                )
+
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
+        self.assertFalse((self.workspace / PENDING_COMMIT_NAME).exists())
+
+    def test_event_write_failure_recovers_the_snapshot_without_duplicate_evidence(self) -> None:
+        self._new_finding()
+        event_path = self.workspace / "audit-events.jsonl"
+        event_count = len(event_path.read_text(encoding="utf-8").splitlines())
+        original_write = audit_core._atomic_write_text
+        failed = False
+
+        def fail_event(path: Path, content: str) -> None:
+            nonlocal failed
+            if (
+                not failed
+                and path.name == "audit-events.jsonl"
+                and (self.workspace / PENDING_COMMIT_NAME).exists()
+            ):
+                failed = True
+                raise AuditError("could not write audit-events.jsonl: simulated ENOSPC")
+            original_write(path, content)
+
+        with mock.patch.object(audit_core, "_atomic_write_text", side_effect=fail_event):
+            with self.assertRaisesRegex(AuditError, "audit recover"):
+                add_evidence(
+                    self.workspace,
+                    "F-001",
+                    evidence_id="E-recover",
+                    kind="observed",
+                    reference="fixture.txt",
+                    summary="This evidence snapshot was written before the event failed.",
+                    actor="Auditor",
+                )
+
+        recovered = recover_audit(self.workspace)
+        finding = list_findings(self.workspace)[0]
+        self.assertEqual(recovered["verification"]["event_count"], event_count + 1)
+        self.assertEqual([item["id"] for item in finding["evidence"]], ["E-recover"])
+
+    def test_cleanup_failure_recovers_without_duplicating_the_committed_event(self) -> None:
+        event_count = len(
+            (self.workspace / "audit-events.jsonl").read_text(encoding="utf-8").splitlines()
+        )
+        with mock.patch.object(
+            audit_core,
+            "_delete_pending_commit",
+            side_effect=AuditError("simulated cleanup failure"),
+        ):
+            with self.assertRaisesRegex(AuditError, "audit recover"):
+                set_g0_gate(
+                    self.workspace,
+                    "blocked",
+                    reviewer="Named Reviewer",
+                    rationale="The committed after-images must be recovered idempotently.",
+                    actor="Named Reviewer",
+                )
+
+        recovered = recover_audit(self.workspace)
+        self.assertEqual(recovered["verification"]["event_count"], event_count + 1)
+        self.assertFalse((self.workspace / PENDING_COMMIT_NAME).exists())
+
+    def test_candidate_limits_fail_before_creating_a_pending_commit(self) -> None:
+        self._new_finding()
+        metadata_path = self.workspace / "audit-workspace.json"
+        finding_path = self.workspace / "findings" / "F-001.json"
+        event_path = self.workspace / "audit-events.jsonl"
+        before = {
+            path: path.read_bytes() for path in (metadata_path, finding_path, event_path)
+        }
+        current_limit = max(
+            metadata_path.stat().st_size,
+            finding_path.stat().st_size,
+            (self.workspace / "research-contract-template.md").stat().st_size,
+        ) + 256
+
+        with mock.patch.object(audit_core, "MAX_AUDIT_FILE_BYTES", current_limit):
+            with self.assertRaisesRegex(AuditError, "byte limit"):
+                add_evidence(
+                    self.workspace,
+                    "F-001",
+                    evidence_id="E-oversize",
+                    kind="observed",
+                    reference="fixture.txt",
+                    summary="x" * (current_limit * 2),
+                    actor="Auditor",
+                )
+
+        event_bytes = len(event_path.read_bytes())
+        with mock.patch.object(audit_core, "MAX_EVENT_LOG_BYTES", event_bytes + 1):
+            with self.assertRaisesRegex(AuditError, "event log would exceed"):
+                set_g0_gate(
+                    self.workspace,
+                    "blocked",
+                    reviewer="Named Reviewer",
+                    rationale="This event cannot fit.",
+                    actor="Named Reviewer",
+                )
+
+        event_count = len(event_path.read_text(encoding="utf-8").splitlines())
+        with mock.patch.object(audit_core, "MAX_EVENTS", event_count):
+            with self.assertRaisesRegex(AuditError, "event limit"):
+                set_g0_gate(
+                    self.workspace,
+                    "blocked",
+                    reviewer="Named Reviewer",
+                    rationale="This event exceeds the count boundary.",
+                    actor="Named Reviewer",
+                )
+
+        with mock.patch.object(audit_core, "MAX_EVIDENCE_PER_FINDING", 0):
+            with self.assertRaisesRegex(AuditError, "evidence limit"):
+                add_evidence(
+                    self.workspace,
+                    "F-001",
+                    evidence_id="E-capacity",
+                    kind="observed",
+                    reference="fixture.txt",
+                    summary="No evidence capacity remains.",
+                    actor="Auditor",
+                )
+        with mock.patch.object(audit_core, "MAX_TOTAL_EVIDENCE", 0):
+            with self.assertRaisesRegex(AuditError, "aggregate limit"):
+                add_evidence(
+                    self.workspace,
+                    "F-001",
+                    evidence_id="E-total-capacity",
+                    kind="observed",
+                    reference="fixture.txt",
+                    summary="No aggregate evidence capacity remains.",
+                    actor="Auditor",
+                )
+        with mock.patch.object(audit_core, "MAX_FINDINGS", 1):
+            with self.assertRaisesRegex(AuditError, "finding limit"):
+                add_finding(
+                    self.workspace,
+                    finding_id="F-capacity",
+                    title="No finding capacity remains",
+                    layer="L1",
+                    competency="C1",
+                    severity="low",
+                    claim="The candidate must be rejected before any write.",
+                    first_broken_contract="Finding count limit",
+                    actor="Auditor",
+                )
+
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
+        self.assertFalse((self.workspace / PENDING_COMMIT_NAME).exists())
+
+    def test_inconsistent_prospective_commit_fails_before_writing_intent(self) -> None:
+        metadata_path = self.workspace / "audit-workspace.json"
+        event_path = self.workspace / "audit-events.jsonl"
+        before = {path: path.read_bytes() for path in (metadata_path, event_path)}
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+        with self.assertRaisesRegex(AuditError, "metadata hash does not match"):
+            audit_core._commit_lifecycle_change(
+                self.workspace,
+                snapshot_relative_path="audit-workspace.json",
+                snapshot_payload=metadata,
+                event_type="g0_gate_set",
+                actor="Fault injector",
+                event_payload={"metadata_sha256": "0" * 64},
+            )
+
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
+        self.assertFalse((self.workspace / PENDING_COMMIT_NAME).exists())
+
+    def test_interrupted_bind_recovers_directory_metadata_and_first_event(self) -> None:
+        workspace = self.root / "recover-bind-workspace"
+        self._make_workspace(workspace)
+        with mock.patch.object(
+            audit_core,
+            "_ensure_empty_findings_directory",
+            side_effect=AuditError("simulated directory failure"),
+        ):
+            with self.assertRaisesRegex(AuditError, "audit recover"):
+                bind_audit(
+                    self.project,
+                    workspace,
+                    actor="Audit Owner",
+                    rationale="Recover an interrupted initial bind.",
+                )
+
+        self.assertTrue((workspace / PENDING_COMMIT_NAME).is_file())
+        self.assertFalse((workspace / "findings").exists())
+        recovered = recover_audit(workspace)
+        self.assertEqual(recovered["verification"]["event_count"], 1)
+        self.assertTrue((workspace / "findings").is_dir())
+        self.assertTrue(verify_audit_workspace(workspace)["ok"])
+
+    def test_recovery_refuses_to_overwrite_an_unknown_third_state(self) -> None:
+        self._complete_contract()
+        original_write = audit_core._atomic_write_text
+
+        def fail_snapshot(path: Path, content: str) -> None:
+            if (
+                path.name == "audit-workspace.json"
+                and (self.workspace / PENDING_COMMIT_NAME).exists()
+            ):
+                raise AuditError("simulated snapshot failure")
+            original_write(path, content)
+
+        with mock.patch.object(audit_core, "_atomic_write_text", side_effect=fail_snapshot):
+            with self.assertRaises(AuditError):
+                set_g0_gate(
+                    self.workspace,
+                    "approved",
+                    reviewer="Named Reviewer",
+                    rationale="Create a recoverable intent.",
+                    actor="Named Reviewer",
+                )
+
+        metadata_path = self.workspace / "audit-workspace.json"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["unexpected-third-state"] = True
+        metadata_path.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+        with self.assertRaisesRegex(AuditError, "neither the recorded before-image"):
+            recover_audit(self.workspace)
+        self.assertTrue((self.workspace / PENDING_COMMIT_NAME).is_file())
 
     def test_verify_detects_a_tampered_event(self) -> None:
         event_path = self.workspace / "audit-events.jsonl"

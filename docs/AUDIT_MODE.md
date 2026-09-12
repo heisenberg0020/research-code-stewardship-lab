@@ -59,7 +59,8 @@ clean Git commit + G0 draft
 | `rcsl audit finding transition WORKSPACE --finding ID --to open\|triaged\|accepted\|mitigated\|verified\|closed\|dismissed\|blocked --actor ACTOR --rationale TEXT` | 追加合法、有理由的状态转换 | 擦除先前记录或自动认定修复可信 |
 | `rcsl audit evidence add WORKSPACE --finding ID --id ID --kind asserted\|observed\|derived\|reproduced\|contradicted --reference TEXT --summary TEXT --actor ACTOR` | 在已通过 preflight 的当前基线上追加 typed evidence | 证明证据充分、独立或无偏 |
 | `rcsl audit verify WORKSPACE [--json]` | 检查本地 metadata、snapshots 和 hash-chain 一致性 | 验证远程历史、身份或科学结论 |
-| `rcsl audit report build WORKSPACE --output PATH [--format markdown\|json]` | 在 workspace 根目录中以 exclusive-create 创建一个**不存在**的 Markdown/JSON review record（默认 Markdown）；在 POSIX 上输出为 `0600`；固定并复核 workspace 目录身份，不接受 symlink、子目录、外部路径，以及大小写不敏感匹配 `.rcsl-write.lock`、`audit-workspace.json`、`audit-events.jsonl` 或四份模板的保留文件名 | 创建 scientific PASS、签名或发布批准 |
+| `rcsl audit recover WORKSPACE [--json]` | 显式完成 `.rcsl-audit-pending.json` 记录的一次中断提交并重新验证；没有 pending 时只验证并报告 clean | 回滚历史、选择性丢弃 event 或修复未知篡改 |
+| `rcsl audit report build WORKSPACE --output PATH [--format markdown\|json]` | 在 workspace 根目录中以 exclusive-create 创建一个**不存在**的 Markdown/JSON review record（默认 Markdown）；在 POSIX 上输出为 `0600`；固定并复核 workspace 目录身份，不接受 symlink、子目录、外部路径，以及大小写不敏感匹配 `.rcsl-write.lock`、`.rcsl-audit-pending.json`、`audit-workspace.json`、`audit-events.jsonl` 或四份模板的保留文件名 | 创建 scientific PASS、签名或发布批准 |
 
 ### G0、lint 与 preflight 的区别
 
@@ -179,9 +180,9 @@ Rebaseline 会使旧 findings 成为 `stale`，并将 G0 重新设为 `draft`。
 - 证明远程 Git 历史、外部文件、命令输出或引用内容未被篡改；
 - 提供访问控制、保密性、法律合规或科学有效性。
 
-一次生命周期动作会更新 snapshot 并追加 event；它们不是跨文件数据库事务。如果进程、磁盘或机器在多文件写入中途故障，下一次 `verify` 会 fail closed，工作区也可能保留 `.rcsl-write.lock`。此时应先保留/备份现场并人工检查，不要通过手改或重算 hash 来“修复”历史。
+一次生命周期动作会先完成 snapshot、event 数量与字节容量的写前验证，再写入并同步短生命周期的 `.rcsl-audit-pending.json`，最后替换 snapshot 和 event ledger。若进程、磁盘或机器在中途故障，所有普通读写都会 fail closed 并提示运行 `rcsl audit recover WORKSPACE`；恢复只做确定性的 roll-forward，且不会重复追加同一 event。未知的第三种文件状态仍会拒绝恢复，必须先保留现场并人工检查。不要通过手改或重算 hash 来“修复”历史。
 
-工作区初始化与报告导出的固定目录句柄、独占创建、身份复核和 POSIX `0600` 是防止本地意外覆盖与常见路径替换竞态的 fail-closed 措施；它们不是事务数据库、数字签名、ACL 或恶意本机写入者无法绕过的安全边界。
+写前容量检查、恢复意图、单文件原子替换与目录同步，以及工作区初始化/报告导出的固定目录句柄、独占创建、身份复核和 POSIX `0600`，是防止半提交、意外覆盖和常见路径替换竞态的 fail-closed 措施；它们不是通用事务数据库、数字签名、ACL 或恶意本机写入者无法绕过的安全边界。
 
 需要更强保证时，应另行采用受控存储、代码托管审计记录、签名、独立复核和组织政策；这些能力不能被描述成默认 CLI 防护。
 

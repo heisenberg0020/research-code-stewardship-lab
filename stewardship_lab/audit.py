@@ -27,9 +27,14 @@ SCHEMA_VERSION = 2
 WORKSPACE_METADATA_NAME = "audit-workspace.json"
 FINDINGS_DIRECTORY_NAME = "findings"
 EVENT_LOG_NAME = "audit-events.jsonl"
+PENDING_COMMIT_NAME = ".rcsl-audit-pending.json"
+PENDING_COMMIT_SCHEMA_VERSION = 1
 ISOLATED_DIRECTORY_NAME = "DO_NOT_OPEN_UNTIL_FINISHED"
 MAX_AUDIT_FILE_BYTES = 16_000_000
 MAX_EVENT_LOG_BYTES = 48_000_000
+# A pending commit contains one bounded snapshot and one event encoded in JSON.
+# The factor of two leaves room for JSON string escaping.
+MAX_PENDING_COMMIT_BYTES = 2 * (MAX_AUDIT_FILE_BYTES + MAX_EVENT_LOG_BYTES) + 1_000_000
 MAX_FINDINGS = 10_000
 MAX_EVIDENCE_PER_FINDING = 10_000
 MAX_TOTAL_EVIDENCE = 50_000
@@ -209,6 +214,27 @@ def _canonical_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def _fsync_directory(directory: Path) -> None:
+    """Make a completed rename/unlink durable on supported local POSIX filesystems."""
+
+    if os.name != "posix":
+        return
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            directory,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+        )
+        os.fsync(descriptor)
+    except OSError as error:
+        raise AuditError(
+            f"could not make directory update durable for {directory}: {error}"
+        ) from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
 def _atomic_write_text(path: Path, content: str) -> None:
     """Write one public lifecycle file atomically in its own directory."""
 
@@ -224,6 +250,7 @@ def _atomic_write_text(path: Path, content: str) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary_path, path)
+        _fsync_directory(path.parent)
     except OSError as error:
         raise AuditError(f"could not write {path.name}: {error}") from error
     finally:
@@ -231,8 +258,32 @@ def _atomic_write_text(path: Path, content: str) -> None:
             temporary_path.unlink(missing_ok=True)
 
 
-def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
-    _atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+def _json_snapshot_text(payload: dict[str, object], label: str) -> str:
+    """Serialize and bound one prospective public snapshot before any write."""
+
+    text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    if len(text.encode("utf-8")) > MAX_AUDIT_FILE_BYTES:
+        raise AuditError(f"{label} exceeds the {MAX_AUDIT_FILE_BYTES}-byte limit")
+    return text
+
+
+def _sha256_text(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _optional_regular_text(path: Path, label: str, *, maximum_bytes: int) -> str | None:
+    """Read an optional regular UTF-8 file without treating a missing file as corruption."""
+
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return None
+    if path.is_symlink() or not path.is_file():
+        raise AuditError(f"{label} must be a regular file when present: {path}")
+    try:
+        return _read_regular_bytes(path, label, maximum_bytes=maximum_bytes).decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise AuditError(f"could not read {label}: {error.__class__.__name__}") from error
 
 
 def _read_regular_bytes(path: Path, label: str, *, maximum_bytes: int) -> bytes:
@@ -296,12 +347,12 @@ def _read_regular_bytes(path: Path, label: str, *, maximum_bytes: int) -> bytes:
             os.close(descriptor)
 
 
-def _read_json_object(path: Path, label: str) -> dict[str, object]:
+def _read_json_object(
+    path: Path, label: str, *, maximum_bytes: int = MAX_AUDIT_FILE_BYTES
+) -> dict[str, object]:
     try:
         payload = json.loads(
-            _read_regular_bytes(
-                path, label, maximum_bytes=MAX_AUDIT_FILE_BYTES
-            ).decode("utf-8")
+            _read_regular_bytes(path, label, maximum_bytes=maximum_bytes).decode("utf-8")
         )
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise AuditError(f"could not read {label}: {error.__class__.__name__}") from error
@@ -372,20 +423,9 @@ def _validate_event_chain(events: list[dict[str, object]]) -> None:
         previous_hash = supplied_hash
 
 
-def _read_events(workspace: Path, *, allow_missing: bool) -> list[dict[str, object]]:
-    event_path = workspace / EVENT_LOG_NAME
-    if event_path.is_symlink():
-        raise AuditError("event log must not be a symlink")
-    if not event_path.is_file():
-        if allow_missing and not event_path.exists():
-            return []
-        raise AuditError(f"missing regular event log: {event_path}")
-    try:
-        text = _read_regular_bytes(
-            event_path, "event log", maximum_bytes=MAX_EVENT_LOG_BYTES
-        ).decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise AuditError(f"could not read event log: {error.__class__.__name__}") from error
+def _parse_events_text(text: str) -> list[dict[str, object]]:
+    """Parse and validate one already-bounded event-log after-image."""
+
     events: list[dict[str, object]] = []
     for line_number, line in enumerate(io.StringIO(text), start=1):
         if len(events) >= MAX_EVENTS:
@@ -404,16 +444,150 @@ def _read_events(workspace: Path, *, allow_missing: bool) -> list[dict[str, obje
     return events
 
 
-def _append_event(
+def _event_log_text(events: list[dict[str, object]]) -> str:
+    if len(events) > MAX_EVENTS:
+        raise AuditError(f"event log would exceed the {MAX_EVENTS}-event limit")
+    _validate_event_chain(events)
+    text = "".join(
+        json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n" for event in events
+    )
+    if len(text.encode("utf-8")) > MAX_EVENT_LOG_BYTES:
+        raise AuditError(f"event log would exceed the {MAX_EVENT_LOG_BYTES}-byte limit")
+    return text
+
+
+def _read_events(workspace: Path, *, allow_missing: bool) -> list[dict[str, object]]:
+    event_path = workspace / EVENT_LOG_NAME
+    if event_path.is_symlink():
+        raise AuditError("event log must not be a symlink")
+    if not event_path.is_file():
+        if allow_missing and not event_path.exists():
+            return []
+        raise AuditError(f"missing regular event log: {event_path}")
+    try:
+        text = _read_regular_bytes(
+            event_path, "event log", maximum_bytes=MAX_EVENT_LOG_BYTES
+        ).decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise AuditError(f"could not read event log: {error.__class__.__name__}") from error
+    return _parse_events_text(text)
+
+
+def _pending_commit_path(workspace: Path) -> Path:
+    return workspace / PENDING_COMMIT_NAME
+
+
+def _pending_commit_exists(workspace: Path) -> bool:
+    return os.path.lexists(_pending_commit_path(workspace))
+
+
+def _assert_no_pending_commit(workspace: Path) -> None:
+    if _pending_commit_exists(workspace):
+        raise AuditError(
+            "audit workspace has an interrupted lifecycle commit; run `audit recover` "
+            "before reading or writing it"
+        )
+
+
+def _valid_sha256_or_none(value: object, label: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+        raise AuditError(f"pending commit {label} is invalid")
+    return value
+
+
+def _validate_snapshot_relative_path(value: object) -> str:
+    relative = _require_text(value, "pending commit snapshot path")
+    if relative == WORKSPACE_METADATA_NAME:
+        return relative
+    parts = relative.split("/")
+    if len(parts) != 2 or parts[0] != FINDINGS_DIRECTORY_NAME:
+        raise AuditError("pending commit snapshot path is not allowed")
+    filename = parts[1]
+    if not filename.endswith(".json"):
+        raise AuditError("pending commit finding path is invalid")
+    finding_id = filename[: -len(".json")]
+    if not FINDING_ID_PATTERN.fullmatch(finding_id):
+        raise AuditError("pending commit finding path is invalid")
+    return relative
+
+
+def _write_pending_commit(workspace: Path, body: dict[str, object]) -> None:
+    path = _pending_commit_path(workspace)
+    if _pending_commit_exists(workspace):
+        raise AuditError("audit workspace already has a pending lifecycle commit")
+    content = json.dumps(body, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    if len(content.encode("utf-8")) > MAX_PENDING_COMMIT_BYTES:
+        raise AuditError(
+            f"pending commit exceeds the {MAX_PENDING_COMMIT_BYTES}-byte limit"
+        )
+    _atomic_write_text(path, content)
+
+
+def _read_pending_commit(workspace: Path) -> dict[str, object] | None:
+    path = _pending_commit_path(workspace)
+    if not _pending_commit_exists(workspace):
+        return None
+    manifest = _read_json_object(
+        path, "pending audit commit", maximum_bytes=MAX_PENDING_COMMIT_BYTES
+    )
+    expected_keys = {
+        "schema_version",
+        "transaction_id",
+        "snapshot_path",
+        "snapshot_before_sha256",
+        "snapshot_after",
+        "event",
+    }
+    if set(manifest) != expected_keys:
+        raise AuditError("pending audit commit has an unexpected schema")
+    if (
+        type(manifest.get("schema_version")) is not int
+        or manifest.get("schema_version") != PENDING_COMMIT_SCHEMA_VERSION
+    ):
+        raise AuditError("pending audit commit schema version is not supported")
+    _require_text(manifest.get("transaction_id"), "pending commit transaction_id")
+    _validate_snapshot_relative_path(manifest.get("snapshot_path"))
+    _valid_sha256_or_none(
+        manifest.get("snapshot_before_sha256"), "snapshot before hash"
+    )
+    if not isinstance(manifest.get("snapshot_after"), dict):
+        raise AuditError("pending commit snapshot after-image is invalid")
+    if not isinstance(manifest.get("event"), dict):
+        raise AuditError("pending commit event is invalid")
+    return manifest
+
+
+def _delete_pending_commit(workspace: Path) -> None:
+    path = _pending_commit_path(workspace)
+    if path.is_symlink() or not path.is_file():
+        raise AuditError("pending audit commit is missing or is not a regular file")
+    try:
+        path.unlink()
+    except OSError as error:
+        raise AuditError(f"could not remove pending audit commit: {error}") from error
+    try:
+        _fsync_directory(workspace)
+    except AuditError:
+        # The after-images are already durable. If this unlink is lost in a crash,
+        # the intent may reappear and the idempotent recovery path can remove it.
+        pass
+
+
+def _build_event_update(
     workspace: Path,
     *,
     event_type: str,
     actor: str,
     payload: dict[str, object],
-) -> dict[str, object]:
-    """Append a hash-chained event by atomically replacing the public JSONL file."""
+    allow_missing: bool = False,
+) -> tuple[dict[str, object], list[dict[str, object]], str]:
+    """Build and bound a prospective event-log update without writing it."""
 
-    events = _read_events(workspace, allow_missing=True)
+    events = _read_events(workspace, allow_missing=allow_missing)
+    if len(events) >= MAX_EVENTS:
+        raise AuditError(f"event log has reached the {MAX_EVENTS}-event limit")
     previous_hash = events[-1]["event_hash"] if events else None
     body: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
@@ -425,12 +599,9 @@ def _append_event(
         "prev_hash": previous_hash,
     }
     event = {**body, "event_hash": _event_hash(body)}
-    events.append(event)
-    _atomic_write_text(
-        workspace / EVENT_LOG_NAME,
-        "".join(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n" for item in events),
-    )
-    return copy.deepcopy(event)
+    updated_events = [*events, event]
+    event_log_text = _event_log_text(updated_events)
+    return event, updated_events, event_log_text
 
 
 def _run_git(project: Path, *arguments: str) -> str:
@@ -475,8 +646,12 @@ def inspect_clean_project(project: str | Path) -> dict[str, object]:
     return copy.deepcopy(_git_snapshot(project, require_clean=True))
 
 
-def _validate_public_workspace(workspace_value: str | Path) -> tuple[Path, dict[str, object]]:
+def _validate_public_workspace(
+    workspace_value: str | Path, *, allow_pending: bool = False
+) -> tuple[Path, dict[str, object]]:
     workspace = _existing_directory(workspace_value, "audit workspace")
+    if not allow_pending:
+        _assert_no_pending_commit(workspace)
     metadata = _read_json_object(workspace / WORKSPACE_METADATA_NAME, "audit workspace metadata")
     if metadata.get("workspace_type") != "rcsl-public-audit-workspace":
         raise AuditError("workspace is not a public RCSL audit workspace")
@@ -578,8 +753,12 @@ def _lifecycle_from_metadata(metadata: dict[str, object]) -> dict[str, object]:
     return lifecycle
 
 
-def _load_bound_workspace(workspace_value: str | Path) -> tuple[Path, dict[str, object], dict[str, object]]:
-    workspace, metadata = _validate_public_workspace(workspace_value)
+def _load_bound_workspace(
+    workspace_value: str | Path, *, allow_pending: bool = False
+) -> tuple[Path, dict[str, object], dict[str, object]]:
+    workspace, metadata = _validate_public_workspace(
+        workspace_value, allow_pending=allow_pending
+    )
     lifecycle = _lifecycle_from_metadata(metadata)
     return workspace, metadata, lifecycle
 
@@ -860,6 +1039,139 @@ def _verify_event_semantics(
         raise AuditError("finding evidence does not match replayed event history")
 
 
+def _snapshot_target(workspace: Path, relative: str) -> Path:
+    if relative == WORKSPACE_METADATA_NAME:
+        return workspace / relative
+    directory = _validated_findings_directory(workspace)
+    return directory / relative.split("/", 1)[1]
+
+
+def _verify_prospective_commit(
+    workspace: Path,
+    snapshot_path: str,
+    snapshot: dict[str, object],
+    events: list[dict[str, object]],
+    *,
+    binding: bool,
+) -> None:
+    if snapshot_path == WORKSPACE_METADATA_NAME:
+        metadata = snapshot
+    else:
+        _, metadata = _validate_public_workspace(workspace, allow_pending=True)
+    _lifecycle_from_metadata(metadata)
+    findings = [] if binding else _load_findings(workspace)
+    if snapshot_path != WORKSPACE_METADATA_NAME:
+        finding_id = Path(snapshot_path).stem
+        candidate = _validate_finding(snapshot, expected_id=finding_id)
+        by_id = {str(item["id"]): item for item in findings}
+        by_id[finding_id] = candidate
+        findings = list(by_id.values())
+    _verify_metadata_event_hash(metadata, events)
+    _verify_finding_event_hashes(findings, events)
+    _verify_event_semantics(findings, events)
+
+
+def _ensure_empty_findings_directory(workspace: Path) -> None:
+    directory = workspace / FINDINGS_DIRECTORY_NAME
+    try:
+        directory.lstat()
+    except FileNotFoundError:
+        try:
+            directory.mkdir()
+            _fsync_directory(workspace)
+        except OSError as error:
+            raise AuditError(f"could not create findings directory: {error}") from error
+        return
+    if directory.is_symlink() or not directory.is_dir():
+        raise AuditError("pending bind findings path is not a regular directory")
+    try:
+        with os.scandir(directory) as entries:
+            if next(entries, None) is not None:
+                raise AuditError("pending bind findings directory is not empty")
+    except AuditError:
+        raise
+    except OSError as error:
+        raise AuditError(f"could not inspect pending bind findings directory: {error}") from error
+
+
+def _commit_lifecycle_change(
+    workspace: Path,
+    *,
+    snapshot_relative_path: str,
+    snapshot_payload: dict[str, object],
+    event_type: str,
+    actor: str,
+    event_payload: dict[str, object],
+    binding: bool = False,
+) -> dict[str, object]:
+    """Durably commit one snapshot plus one event with explicit recovery intent."""
+
+    _assert_no_pending_commit(workspace)
+    snapshot_relative_path = _validate_snapshot_relative_path(snapshot_relative_path)
+    snapshot_label = (
+        "audit workspace metadata"
+        if snapshot_relative_path == WORKSPACE_METADATA_NAME
+        else "finding"
+    )
+    snapshot_text = _json_snapshot_text(snapshot_payload, snapshot_label)
+    event, events, event_log_text = _build_event_update(
+        workspace,
+        event_type=event_type,
+        actor=actor,
+        payload=event_payload,
+        allow_missing=binding,
+    )
+    _verify_prospective_commit(
+        workspace,
+        snapshot_relative_path,
+        snapshot_payload,
+        events,
+        binding=binding,
+    )
+
+    if binding:
+        snapshot_path = workspace / WORKSPACE_METADATA_NAME
+    else:
+        snapshot_path = _snapshot_target(workspace, snapshot_relative_path)
+    snapshot_before = _optional_regular_text(
+        snapshot_path,
+        snapshot_label,
+        maximum_bytes=MAX_AUDIT_FILE_BYTES,
+    )
+    if snapshot_relative_path == WORKSPACE_METADATA_NAME and snapshot_before is None:
+        raise AuditError("audit workspace metadata disappeared before commit")
+    if event_type == "finding_created" and snapshot_before is not None:
+        raise AuditError(f"finding already exists: {Path(snapshot_relative_path).stem}")
+    if event_type in {"finding_evidence_added", "finding_status_changed"} and snapshot_before is None:
+        raise AuditError("finding disappeared before lifecycle commit")
+    pending_body: dict[str, object] = {
+        "schema_version": PENDING_COMMIT_SCHEMA_VERSION,
+        "transaction_id": str(uuid.uuid4()),
+        "snapshot_path": snapshot_relative_path,
+        "snapshot_before_sha256": (
+            _sha256_text(snapshot_before) if snapshot_before is not None else None
+        ),
+        "snapshot_after": snapshot_payload,
+        "event": event,
+    }
+    try:
+        _write_pending_commit(workspace, pending_body)
+        if binding:
+            _ensure_empty_findings_directory(workspace)
+        _atomic_write_text(snapshot_path, snapshot_text)
+        _atomic_write_text(workspace / EVENT_LOG_NAME, event_log_text)
+        _verified_audit_snapshot(workspace, allow_pending=True)
+        _delete_pending_commit(workspace)
+    except AuditError as error:
+        if not _pending_commit_exists(workspace):
+            raise
+        raise AuditError(
+            "audit lifecycle commit was interrupted; run `audit recover` before "
+            f"continuing: {error}"
+        ) from error
+    return copy.deepcopy(event)
+
+
 @_serialized_bind
 def bind_audit(
     project: str | Path,
@@ -924,15 +1236,13 @@ def bind_audit(
         "event_log": EVENT_LOG_NAME,
     }
 
-    try:
-        findings_directory.mkdir()
-    except OSError as error:
-        raise AuditError(f"could not create findings directory: {error}") from error
-    _append_event(
+    _commit_lifecycle_change(
         workspace_path,
+        snapshot_relative_path=WORKSPACE_METADATA_NAME,
+        snapshot_payload=upgraded,
         event_type="workspace_bound",
         actor=actor,
-        payload={
+        event_payload={
             "project_root": project_snapshot["project_root"],
             "baseline_head": project_snapshot["head"],
             "baseline_id": baseline["id"],
@@ -942,8 +1252,8 @@ def bind_audit(
             "metadata_sha256": _metadata_hash(upgraded),
             "contract_sha256": gate["contract_sha256"],
         },
+        binding=True,
     )
-    _atomic_write_json(workspace_path / WORKSPACE_METADATA_NAME, upgraded)
     return copy.deepcopy(upgraded)
 
 
@@ -985,12 +1295,13 @@ def set_g0_gate(
         ),
     }
     updated_lifecycle["g0_gate"] = gate
-    _atomic_write_json(workspace_path / WORKSPACE_METADATA_NAME, updated)
-    _append_event(
+    _commit_lifecycle_change(
         workspace_path,
+        snapshot_relative_path=WORKSPACE_METADATA_NAME,
+        snapshot_payload=updated,
         event_type="g0_gate_set",
         actor=actor,
-        payload={
+        event_payload={
             "status": canonical_status,
             "reviewer": reviewer,
             "rationale": rationale,
@@ -1114,12 +1425,13 @@ def rebaseline(workspace: str | Path, *, actor: str, reason: str) -> dict[str, o
             workspace_path / "research-contract-template.md", "public research contract"
         ),
     }
-    _atomic_write_json(workspace_path / WORKSPACE_METADATA_NAME, updated)
-    _append_event(
+    _commit_lifecycle_change(
         workspace_path,
+        snapshot_relative_path=WORKSPACE_METADATA_NAME,
+        snapshot_payload=updated,
         event_type="baseline_replaced",
         actor=actor,
-        payload={
+        event_payload={
             "reason": reason,
             "previous_head": previous_baseline.get("head") if isinstance(previous_baseline, dict) else None,
             "previous_baseline_id": previous_baseline.get("id") if isinstance(previous_baseline, dict) else None,
@@ -1159,6 +1471,8 @@ def add_finding(
     path = _finding_path(workspace_path, finding_id)
     if path.is_symlink() or path.exists():
         raise AuditError(f"finding already exists: {finding_id}")
+    if len(_load_findings(workspace_path)) >= MAX_FINDINGS:
+        raise AuditError(f"findings would exceed the {MAX_FINDINGS}-finding limit")
     if layer not in LAYERS:
         raise AuditError(f"layer must be one of: {', '.join(LAYERS)}")
     if competency not in COMPETENCIES:
@@ -1192,12 +1506,13 @@ def add_finding(
         },
         "evidence": [],
     }
-    _atomic_write_json(path, finding)
-    _append_event(
+    _commit_lifecycle_change(
         workspace_path,
+        snapshot_relative_path=f"{FINDINGS_DIRECTORY_NAME}/{path.name}",
+        snapshot_payload=finding,
         event_type="finding_created",
         actor=finding["actor"],
-        payload={
+        event_payload={
             "finding_id": finding_id,
             "layer": layer,
             "competency": competency,
@@ -1243,6 +1558,18 @@ def add_evidence(
     evidence = finding["evidence"]
     if not isinstance(evidence, list):
         raise AuditError("finding evidence is invalid")
+    if len(evidence) >= MAX_EVIDENCE_PER_FINDING:
+        raise AuditError(
+            f"finding {finding_id} would exceed the "
+            f"{MAX_EVIDENCE_PER_FINDING}-evidence limit"
+        )
+    total_evidence = sum(
+        len(item["evidence"]) for item in _load_findings(workspace_path)
+    )
+    if total_evidence >= MAX_TOTAL_EVIDENCE:
+        raise AuditError(
+            f"findings would exceed the {MAX_TOTAL_EVIDENCE}-evidence aggregate limit"
+        )
     if any(isinstance(item, dict) and item.get("id") == evidence_id for item in evidence):
         raise AuditError(f"evidence already exists: {evidence_id}")
     canonical_kind = _require_text(kind, "kind")
@@ -1259,12 +1586,14 @@ def add_evidence(
     evidence.append(entry)
     finding["actor"] = entry["actor"]
     finding["updated_at"] = entry["recorded_at"]
-    _atomic_write_json(_finding_path(workspace_path, finding_id), finding)
-    _append_event(
+    finding_path = _finding_path(workspace_path, finding_id)
+    _commit_lifecycle_change(
         workspace_path,
+        snapshot_relative_path=f"{FINDINGS_DIRECTORY_NAME}/{finding_path.name}",
+        snapshot_payload=finding,
         event_type="finding_evidence_added",
         actor=entry["actor"],
-        payload={
+        event_payload={
             "finding_id": finding_id,
             "evidence_id": evidence_id,
             "kind": entry["kind"],
@@ -1312,12 +1641,14 @@ def transition_finding(
     finding["status"] = new_status
     finding["actor"] = actor
     finding["updated_at"] = _utc_now()
-    _atomic_write_json(_finding_path(workspace_path, finding_id), finding)
-    _append_event(
+    finding_path = _finding_path(workspace_path, finding_id)
+    _commit_lifecycle_change(
         workspace_path,
+        snapshot_relative_path=f"{FINDINGS_DIRECTORY_NAME}/{finding_path.name}",
+        snapshot_payload=finding,
         event_type="finding_status_changed",
         actor=actor,
-        payload={
+        event_payload={
             "finding_id": finding_id,
             "from_status": current_status,
             "to_status": new_status,
@@ -1330,6 +1661,8 @@ def transition_finding(
 
 def _verified_audit_snapshot(
     workspace: str | Path,
+    *,
+    allow_pending: bool = False,
 ) -> tuple[
     Path,
     dict[str, object],
@@ -1340,7 +1673,9 @@ def _verified_audit_snapshot(
 ]:
     """Load once, verify once, and return the exact state used by report projection."""
 
-    workspace_path, metadata, lifecycle = _load_bound_workspace(workspace)
+    workspace_path, metadata, lifecycle = _load_bound_workspace(
+        workspace, allow_pending=allow_pending
+    )
     findings = _load_findings(workspace_path)
     events = _read_events(workspace_path, allow_missing=False)
     if not events:
@@ -1387,6 +1722,107 @@ def verify_audit_workspace(workspace: str | Path) -> dict[str, object]:
     """
 
     return copy.deepcopy(_verified_audit_snapshot(workspace)[-1])
+
+
+def _restore_after_image(
+    path: Path,
+    before_hash: str | None,
+    after_text: str,
+    label: str,
+    maximum_bytes: int,
+) -> None:
+    current = _optional_regular_text(path, label, maximum_bytes=maximum_bytes)
+    current_hash = _sha256_text(current) if current is not None else None
+    after_hash = _sha256_text(after_text)
+    if current_hash not in {before_hash, after_hash}:
+        raise AuditError(
+            f"pending commit cannot recover {label}: current content is neither "
+            "the recorded before-image nor after-image"
+        )
+    if current_hash != after_hash:
+        _atomic_write_text(path, after_text)
+
+
+@_serialized_workspace_mutation(0)
+def recover_audit(workspace: str | Path) -> dict[str, object]:
+    """Idempotently roll a durable pending lifecycle commit forward."""
+
+    workspace_path = _existing_directory(workspace, "audit workspace")
+    manifest = _read_pending_commit(workspace_path)
+    if manifest is None:
+        verification = _verified_audit_snapshot(workspace_path)[-1]
+        return {
+            "ok": True,
+            "status": "clean",
+            "recovered": False,
+            "verification": copy.deepcopy(verification),
+        }
+
+    snapshot_relative_path = _validate_snapshot_relative_path(
+        manifest["snapshot_path"]
+    )
+    snapshot_payload = manifest["snapshot_after"]
+    event = manifest["event"]
+    if not isinstance(snapshot_payload, dict) or not isinstance(event, dict):
+        raise AuditError("pending commit after-images are invalid")
+    snapshot_after = _json_snapshot_text(snapshot_payload, "pending commit snapshot")
+    binding = event.get("event_type") == "workspace_bound"
+    current_events = _read_events(workspace_path, allow_missing=binding)
+    sequence = event.get("seq")
+    if type(sequence) is not int or sequence < 1:
+        raise AuditError("pending commit event sequence is invalid")
+    if len(current_events) == sequence - 1:
+        events = [*current_events, event]
+        event_write_required = True
+    elif current_events and len(current_events) == sequence and current_events[-1] == event:
+        events = current_events
+        event_write_required = False
+    else:
+        raise AuditError("pending commit does not extend the current event log")
+    event_log_after = _event_log_text(events)
+    if binding and snapshot_relative_path != WORKSPACE_METADATA_NAME:
+        raise AuditError("pending commit binding target is invalid")
+    _verify_prospective_commit(
+        workspace_path,
+        snapshot_relative_path,
+        snapshot_payload,
+        events,
+        binding=binding,
+    )
+
+    if binding:
+        snapshot_path = workspace_path / WORKSPACE_METADATA_NAME
+    else:
+        snapshot_path = _snapshot_target(workspace_path, snapshot_relative_path)
+    try:
+        if binding:
+            _ensure_empty_findings_directory(workspace_path)
+        _restore_after_image(
+            snapshot_path,
+            _valid_sha256_or_none(
+                manifest["snapshot_before_sha256"], "snapshot before hash"
+            ),
+            snapshot_after,
+            "snapshot",
+            MAX_AUDIT_FILE_BYTES,
+        )
+        if event_write_required:
+            _atomic_write_text(workspace_path / EVENT_LOG_NAME, event_log_after)
+        verification = _verified_audit_snapshot(workspace_path, allow_pending=True)[-1]
+        _delete_pending_commit(workspace_path)
+    except AuditError as error:
+        raise AuditError(
+            "audit recovery remains incomplete; preserve the pending commit and run "
+            f"`audit recover` again after resolving the write failure: {error}"
+        ) from error
+    return {
+        "ok": True,
+        "status": "recovered",
+        "recovered": True,
+        "transaction_id": manifest["transaction_id"],
+        "event_hash": event["event_hash"],
+        "verification": copy.deepcopy(verification),
+    }
 
 
 def _preflight_from_snapshot(

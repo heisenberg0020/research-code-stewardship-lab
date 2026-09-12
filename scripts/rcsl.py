@@ -821,6 +821,28 @@ def command_audit_verify(workspace: Path | str, *, as_json: bool) -> int:
     return 0
 
 
+def command_audit_recover(workspace: Path | str, *, as_json: bool) -> int:
+    result = audit_core.recover_audit(workspace)
+    payload = {
+        "schema_version": 1,
+        "operation_status": result["status"],
+        "assessment_status": "ledger-consistent",
+        "scope": result["verification"]["validator_scope"],
+        "limitations": list(AUDIT_OUTPUT_LIMITATIONS),
+        "recovery": result,
+    }
+    if as_json:
+        _print_json(payload)
+    elif result["recovered"]:
+        print(f"Interrupted audit commit RECOVERED: {result['transaction_id']}")
+        print(f"Committed event: {result['event_hash']}")
+        print(AUDIT_OUTPUT_LIMITATIONS[0])
+    else:
+        print("Audit workspace is CLEAN; no interrupted commit was present.")
+        print(AUDIT_OUTPUT_LIMITATIONS[0])
+    return 0
+
+
 def command_audit_report(
     workspace_value: Path | str, output_value: Path | str, report_format: str
 ) -> int:
@@ -852,6 +874,7 @@ def command_audit_report(
         return 1
     reserved_names = {
         ".rcsl-write.lock",
+        audit_core.PENDING_COMMIT_NAME,
         WORKSPACE_METADATA_NAME,
         audit_core.EVENT_LOG_NAME,
         *WORKSPACE_TEMPLATE_FILENAMES,
@@ -1249,6 +1272,13 @@ def build_parser() -> argparse.ArgumentParser:
     audit_verify.add_argument("workspace", type=Path)
     audit_verify.add_argument("--json", action="store_true")
 
+    audit_recover = audit_commands.add_parser(
+        "recover",
+        help="Explicitly finish one interrupted lifecycle commit, then verify it.",
+    )
+    audit_recover.add_argument("workspace", type=Path)
+    audit_recover.add_argument("--json", action="store_true")
+
     audit_report = audit_commands.add_parser(
         "report", help="Render a review record; does not approve science or release."
     )
@@ -1385,6 +1415,8 @@ def _dispatch_audit(args: argparse.Namespace) -> int:
         return command_audit_evidence_add(args)
     if args.audit_command == "verify":
         return command_audit_verify(args.workspace, as_json=args.json)
+    if args.audit_command == "recover":
+        return command_audit_recover(args.workspace, as_json=args.json)
     if args.audit_command == "report" and args.report_command == "build":
         return command_audit_report(args.workspace, args.output, args.format)
     raise AssertionError(f"Unhandled audit command: {args.audit_command}")
