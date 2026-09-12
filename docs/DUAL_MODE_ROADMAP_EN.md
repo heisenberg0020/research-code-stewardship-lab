@@ -2,7 +2,7 @@
 
 **Goal:** let RCSL support both repeatable capability training (**Mode Train**) and bounded real research audits (**Mode Audit**) without presenting an automated structural check as scientific judgment or repackaging an already public case as an “unseen” blind task.
 
-[中文](DUAL_MODE_ROADMAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Case release model](CASE_RELEASE_MODEL_EN.md)
+[中文](DUAL_MODE_ROADMAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Case release model](CASE_RELEASE_MODEL_EN.md) · [Offline static view](VIEW_MODE_EN.md)
 
 ## Invariants
 
@@ -42,7 +42,7 @@ The vertical axis always classifies by the **first failed contract**: L1 semanti
 | Phase 1: explicit Train/Audit and real closed loop | **Completed this turn** | P0 | Unauthorized default writes/execution, or tool output mistaken for a conclusion |
 | Phase 2: learner progress, human rubric, and capstone | **Complete** | P1 | Mechanical scoring, answer leakage, overstated learning gains |
 | Phase 3: Demo export and Blind Challenge split packages | **3A local tooling complete; 3B controlled operation pending** | P2 | Pseudo-blinding, missing access control, licensing and measurement-validity failures |
-| Phase 4: optional UI/registry/integrations | Optional | P3 | Premature platform work, privacy/lock-in, CLI/UI semantic drift |
+| Phase 4: optional UI/registry/integrations | **4A offline static view complete; 4B dashboard/hosting/integrations undecided** | P3 | Premature platform work, privacy/lock-in, CLI/UI semantic drift |
 
 ---
 
@@ -103,19 +103,20 @@ The vertical axis always classifies by the **first failed contract**: L1 semanti
 
 **Key fact:** a historically public task does not become unseen by repackaging it. A true Blind Challenge needs a new, never-public case and operational capacity to protect it; local packaging and `package verify` can enforce file, digest, exact-package, and current POSIX-mode contracts only. They cannot validate ACLs, recover leaked information, or replace human operational gates. Completing Phase 3A local tooling does not change the fact that Phase 3B—and Phase 3 overall—remain incomplete. See the [case release model](CASE_RELEASE_MODEL_EN.md).
 
-## Phase 4: optional Web UI, registry, and integrations
+## Phase 4: optional views, registry, and integrations (4A complete)
 
 **Purpose:** after the common kernel is stable, reduce navigation cost and improve case discovery without turning RCSL into a centralized-service dependency.
 
 | Item | Content |
 | --- | --- |
-| Concrete deliverables | Optional local/static Web view; Case Registry (provenance, version, mode, license, known limits); editor/CI/learning-platform integrations; Evidence Passport viewer rendered from the same Markdown/JSON schema |
-| Acceptance criteria | All Train/Audit work remains possible without Web; UI and CLI produce the same schema; no source, data, answers, or identity is uploaded by default; registry distinguishes Open Demo from controlled Blind Challenge |
-| Non-goals | Forced login, uploading private research material to a central service, replacing human approval with UI, or inferring scientific correctness from integration status |
-| Dependencies | Stable Phase 1 schema and CLI; privacy/security/accessibility review; clear governance, hosting, and maintenance ownership |
-| Exit condition | The UI is a replaceable view layer: closing it or working offline never loses cases, evidence, or human decisions; every mode still imports/exports through the local CLI |
+| Phase 4A: offline static view (complete) | `view build --open-demo PATH [--open-demo PATH ...] --output NEW_EXTERNAL_DIR [--audit-workspace PATH] [--training-workspace PATH]` and `view verify VIEW [--json]`; at least one Open Demo reverified by the repository-side trusted verifier; fixed outputs `index.html`, `style.css`, `VIEW_BOUNDARY.md`, `VIEW_MANIFEST.json`, `CHECKSUMS.sha256`, `data/CASE_REGISTRY.json`, and optional Audit/Training evidence snapshots |
+| 4A acceptance criteria | Output is outside the public repository, nonexistent, has an existing immediate parent, and does not overlap inputs; the build executes no package/project code and uses no network; the page is fully offline with no JavaScript, outbound links, CDN, server, or network; Case Registry contains allowlisted fields only and excludes actor/reviewer/controlled scoring digests; Audit/Training evidence preserves `not_assessed`, known limitations, and human-decision boundaries and is explicitly locally sensitive; every view uses POSIX `0700`/`0600`; Blind staging/role packages fail closed before payload reads; exact root/payload, manifest/checksum, dynamic-dependency, and mode contracts are verifiable |
+| Phase 4B: interaction and hosting (undecided) | Consider an interactive dashboard, hosted Case Registry, multi-user synchronization, editor/CI/learning-platform integrations, and richer Evidence Passport browsing only after real demand and governance exist; 4B is not the default continuation of 4A |
+| Non-goals | Mandatory login; uploading private research material to a central service; making the view authoritative; replacing human approval with UI; inferring scientific correctness from rendering or verification; letting Blind material bypass Phase 3B; or calling a local snapshot a security-reviewed deployable site |
+| Dependencies | 4A reuses stable Phase 1–3A schemas, the trusted Open Demo verifier, Audit report data, and Training redacted export. 4B still requires real collaboration demand, privacy/security/accessibility review, threat modeling, and clear governance, hosting, and maintenance ownership |
+| Exit condition | **4A is met.** Every Train/Audit workflow remains usable without a UI; the static view is a disposable read-only projection, and closing it or working offline cannot lose cases, evidence, or human decisions. **This does not declare Phase 4B or Phase 4 overall complete.** |
 
-**Risk control:** begin with static or local views. Consider a hosted registry or third-party integration only after real cross-device collaboration demand and governance are established.
+**Risk control:** 4A accepts at least one verified Open Demo and explicitly refuses Blind staging and all three role-package types. A view containing Audit/Training evidence stays local; `0700`/`0600` is a current POSIX-mode check, not an ACL, encryption, or copy prevention. `view verify` checks only the snapshot contract, not scientific correctness, continued source-workspace synchronization, or hosting safety. See the [offline static view guide](VIEW_MODE_EN.md). Consider 4B only after real cross-device collaboration demand and governance are established.
 
 ## Decision gates
 
@@ -125,4 +126,5 @@ The vertical axis always classifies by the **first failed contract**: L1 semanti
 | Allowing execution | Audit itself never executes the project. If code execution, network access, protected material, source changes, or more budget are needed, is there a separate explicitly authorized tool flow? |
 | Forming a conclusion | Does the Evidence Passport distinguish facts, inferences, assumptions, unknowns, and permitted claims? |
 | Releasing a case | Is it an Open Demo or a Blind Challenge? Does the statement honestly match the controls? |
-| Adding UI/integration | Can all evidence and human decisions still be retained locally, offline, and exportably? |
+| Building a static view | Is there at least one trusted-verified Open Demo? Are Blind inputs refused? If Audit/Training evidence is included, will it stay local and preserve `not_assessed` and known limitations? |
+| Shipping dashboard/hosting/integration | Can all evidence and human decisions still be retained locally, offline, and exportably? Are privacy, security, accessibility, permissions, and maintenance ownership explicit? |

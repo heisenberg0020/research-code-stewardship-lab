@@ -2,7 +2,7 @@
 
 **目标：**让 RCSL 同时服务于可重复的能力训练（**Mode Train**）和有边界的真实研究审计（**Mode Audit**），但不把自动结构检查包装成科学判断，也不把已有公开题重新包装成“未见盲题”。
 
-[English](DUAL_MODE_ROADMAP_EN.md) · [能力模型](COMPETENCY_MODEL.md) · [案例发布模型](CASE_RELEASE_MODEL.md)
+[English](DUAL_MODE_ROADMAP_EN.md) · [能力模型](COMPETENCY_MODEL.md) · [案例发布模型](CASE_RELEASE_MODEL.md) · [离线静态视图](VIEW_MODE.md)
 
 ## 不变原则
 
@@ -42,7 +42,7 @@ G0 Research Contract / Case Manifest
 | Phase 1：显式 Train/Audit 与真实闭环 | **本轮已完成** | P0 | 默认写入/执行越权，或把工具输出误解为结论 |
 | Phase 2：进度、人工 Rubric 与 Capstone | **已完成** | P1 | 机械化打分、泄题、把学习增益说得过强 |
 | Phase 3：Demo 导出与 Blind Challenge 分包 | **3A 本地工具完成；3B 受控运营待完成** | P2 | 伪盲测、访问控制缺失、许可证和评价有效性问题 |
-| Phase 4：可选 UI/Registry/集成 | 可选 | P3 | 过早平台化、隐私/锁定、CLI 与 UI 语义漂移 |
+| Phase 4：可选 UI/Registry/集成 | **4A 离线静态视图完成；4B Dashboard/托管/集成待定** | P3 | 过早平台化、隐私/锁定、CLI 与 UI 语义漂移 |
 
 ---
 
@@ -103,19 +103,20 @@ G0 Research Contract / Case Manifest
 
 **关键事实：**历史公开过的题目不会因为重新打包而变成未见题。真正的 Blind Challenge 必须使用新的、从未公开且有运维能力保护的案例；本地打包和 `package verify` 只能执行文件、摘要、精确包边界与当前 POSIX mode 契约，不能验证 ACL、回收已经泄露的信息或替代人工运营门。Phase 3A 的本地工具完成不改变 Phase 3B 和 Phase 3 整体仍未完成的事实。详见 [案例发布模型](CASE_RELEASE_MODEL.md)。
 
-## Phase 4：可选 Web UI、Registry 与集成
+## Phase 4：可选视图、Registry 与集成（4A 已完成）
 
 **目的：**在共同内核稳定后，降低导航成本和提升案例可发现性，而不把 RCSL 变成依赖中心化服务的平台。
 
 | 项目 | 内容 |
 | --- | --- |
-| 具体产物 | 可选本地/静态 Web 视图；Case Registry（来源、版本、模式、许可、已知限制）；编辑器/CI/学习平台集成；从同一 Markdown/JSON schema 渲染的 Evidence Passport 查看器 |
-| 验收标准 | 没有 Web 也能完成所有 Train/Audit 工作；UI 与 CLI 产生同一 schema；默认不上传源码、数据、答案或身份信息；Registry 明确区分 Open Demo 与受控 Blind Challenge |
-| 非目标 | 强制登录、把私有研究材料上传到中心服务、由 UI 替代人工批准、用集成状态推断科学正确 |
-| 依赖 | Phase 1 schema 和 CLI 稳定；隐私/安全/无障碍审查；清晰的治理、托管与维护责任 |
-| 退出条件 | UI 只是可替换的视图层，关闭或离线时不损失案例、证据或决策记录；所有模式仍可由本地 CLI 导入/导出 |
+| Phase 4A：离线静态视图（已完成） | `view build --open-demo PATH [--open-demo PATH ...] --output NEW_EXTERNAL_DIR [--audit-workspace PATH] [--training-workspace PATH]` 与 `view verify VIEW [--json]`；至少一个经仓库侧受信任校验器复核的 Open Demo；固定输出 `index.html`、`style.css`、`VIEW_BOUNDARY.md`、`VIEW_MANIFEST.json`、`CHECKSUMS.sha256`、`data/CASE_REGISTRY.json` 和可选的 Audit/Training evidence snapshot |
+| 4A 验收标准 | 输出位于公开仓库外、尚不存在且直接父目录已存在，不与输入重叠；build 不执行 package/项目代码且不联网；页面完全离线、无 JavaScript、无外链/CDN/server/network；Case Registry 只含 allowlist 字段，不含 actor/reviewer/受控评分摘要；Audit/Training evidence 保留 `not_assessed`、known limitations 与人工判断边界并明确标为本地敏感；所有 view 使用 POSIX `0700`/`0600`；Blind staging/role package 在读取 payload 前 fail closed；固定 root/payload、manifest/checksum、动态依赖和 mode 可复核 |
+| Phase 4B：交互与托管（待定） | 只有真实需求与治理就绪后，才考虑交互式 Dashboard、托管 Case Registry、多用户同步、编辑器/CI/学习平台集成与更丰富的 Evidence Passport 浏览；它不是 4A 的默认延伸 |
+| 非目标 | 强制登录、把私有研究材料上传到中心服务、让 view 成为权威记录、由 UI 替代人工批准、用渲染或校验状态推断科学正确、让 Blind 材料绕过 Phase 3B、把本地快照描述成经过安全审查的可部署网站 |
+| 依赖 | 4A 复用 Phase 1–3A 的稳定 schema、受信任 Open Demo verifier、Audit report data 与 Training 脱敏导出；4B 仍需真实协作需求、隐私/安全/无障碍审查、威胁模型，以及清晰的治理、托管与维护责任 |
+| 退出条件 | **4A 已满足。**无 UI 仍可完成所有 Train/Audit 工作；静态 view 是可丢弃重建的只读 projection，断网或关闭它不会损失案例、证据或人类决定。**Phase 4B 和 Phase 4 整体不因此宣告完成。** |
 
-**风险控制：**先实现静态或本地视图；只有在真实用户需要跨设备协作且治理到位后，再考虑托管 Registry 或第三方集成。
+**风险控制：**4A 只接受至少一个 verified Open Demo，并明确拒绝 Blind staging 与三类 role package。包含 Audit/Training evidence 的 view 只能留在本地；`0700`/`0600` 是当前 POSIX mode 检查，不是 ACL、加密或防复制。`view verify` 只检查快照契约，不证明科学正确、源 workspace 仍同步或托管安全。完整边界见 [离线静态视图指南](VIEW_MODE.md)。只有在真实用户需要跨设备协作且治理到位后，再考虑 4B。
 
 ## 决策门
 
@@ -125,4 +126,5 @@ G0 Research Contract / Case Manifest
 | 允许执行 | Audit 本身不会执行项目；若需运行代码、联网、访问受保护材料、改写源码或扩大预算，是否另有明确授权的工具流程？ |
 | 形成结论 | Evidence Passport 是否区分事实、推断、假设、未知项和允许 claim？ |
 | 发布案例 | 它是 Open Demo 还是 Blind Challenge？声明是否诚实匹配控制能力？ |
-| 上线 UI/集成 | 是否仍能离线、本地、可导出地保留全部证据与人类决策？ |
+| 生成静态 view | 是否至少有一个受信任验证的 Open Demo？是否拒绝 Blind 输入？若加入 Audit/Training evidence，是否保持本地私有且完整展示 `not_assessed` 与 known limitations？ |
+| 上线 Dashboard/托管/集成 | 是否仍能离线、本地、可导出地保留全部证据与人类决策？隐私、安全、无障碍、权限与维护责任是否已明确？ |

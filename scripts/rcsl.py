@@ -24,6 +24,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 from stewardship_lab import audit as audit_core
 from stewardship_lab import release as release_core
 from stewardship_lab import training as training_core
+from stewardship_lab import view as view_core
 
 
 TRAINING_ROOT = REPOSITORY_ROOT / "LLM4SBR_research_audit_training_v2"
@@ -995,8 +996,9 @@ def command_audit_report(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "RCSL has two explicit modes: train is a human audit curriculum "
-            "(it never trains a model); audit manages evidence for a real Git project."
+            "RCSL has two human workflows: train is an audit curriculum "
+            "(it never trains a model), while audit manages evidence for a real Git "
+            "project. Release and view commands package or display their records."
         )
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -1160,6 +1162,46 @@ def build_parser() -> argparse.ArgumentParser:
     )
     package_verify.add_argument("staging", type=Path)
     package_verify.add_argument("--json", action="store_true")
+
+    view_parser = subcommands.add_parser(
+        "view",
+        help="Build or verify a replaceable, fully offline static view.",
+        description=(
+            "Render verified Open Demo metadata and optional local Audit/Train "
+            "evidence into a no-JavaScript static snapshot. Blind package inputs "
+            "are refused."
+        ),
+    )
+    view_commands = view_parser.add_subparsers(dest="view_command", required=True)
+    view_build = view_commands.add_parser(
+        "build",
+        help="Create a new offline static view outside this repository.",
+    )
+    view_build.add_argument(
+        "--open-demo",
+        dest="open_demos",
+        action="append",
+        type=Path,
+        required=True,
+        help="Verified Open Demo bundle; repeat to register more than one case.",
+    )
+    view_build.add_argument("--output", type=Path, required=True)
+    view_build.add_argument(
+        "--audit-workspace",
+        type=Path,
+        help="Optional local Audit workspace; makes the view local-sensitive.",
+    )
+    view_build.add_argument(
+        "--training-workspace",
+        type=Path,
+        help="Optional Training workspace, consumed through its redacted projection.",
+    )
+    view_verify = view_commands.add_parser(
+        "verify",
+        help="Verify the exact static-view root and retained byte inventory.",
+    )
+    view_verify.add_argument("view", type=Path)
+    view_verify.add_argument("--json", action="store_true")
 
     audit_parser = subcommands.add_parser(
         "audit",
@@ -1520,6 +1562,35 @@ def _dispatch_release(args: argparse.Namespace) -> int:
     raise AssertionError(f"Unhandled release command: {args.command}")
 
 
+def _dispatch_view(args: argparse.Namespace) -> int:
+    if args.view_command == "build":
+        output = view_core.build_static_view(
+            args.open_demos,
+            args.output,
+            audit_workspace=args.audit_workspace,
+            training_workspace=args.training_workspace,
+        )
+        print(f"Offline static view CREATED: {output}")
+        if args.audit_workspace is not None or args.training_workspace is not None:
+            print(
+                f"Privacy: {view_core.LOCAL_PRIVACY_CLASSIFICATION} · DO NOT DEPLOY"
+            )
+        else:
+            print(f"Privacy: {view_core.OPEN_PRIVACY_CLASSIFICATION}")
+        print("The view is read-only and makes no scientific or maturity verdict.")
+        return 0
+    if args.view_command == "verify":
+        result = view_core.verify_static_view(args.view)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
+        else:
+            print(f"Static view integrity: {result['integrity_status'].upper()}")
+            print(f"Privacy classification: {result['privacy_classification']}")
+            print("Scientific correctness: NOT ASSESSED")
+        return 0
+    raise AssertionError(f"Unhandled view command: {args.view_command}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -1529,6 +1600,8 @@ def main(argv: list[str] | None = None) -> int:
             return _dispatch_audit(args)
         if args.command in {"export", "package"}:
             return _dispatch_release(args)
+        if args.command == "view":
+            return _dispatch_view(args)
     except training_core.TrainingError as error:
         print(f"Training operation refused: {error}", file=sys.stderr)
         return 1
@@ -1537,6 +1610,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except release_core.ReleaseError as error:
         print(f"Release operation refused: {error}", file=sys.stderr)
+        return 1
+    except view_core.ViewError as error:
+        print(f"View operation refused: {error}", file=sys.stderr)
         return 1
     except OSError as error:
         print(f"Local operation failed: {error}", file=sys.stderr)

@@ -329,7 +329,15 @@ def _directory_open_flags() -> int:
 
 
 def _file_open_flags() -> int:
-    return os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    # O_NONBLOCK is inert for regular files, but prevents an attacker-controlled
+    # FIFO from hanging the verifier between the directory-entry stat and open.
+    # The caller still fstat()s the opened descriptor and rejects non-regular
+    # objects before reading any bytes.
+    return (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
 
 
 def _open_directory_chain(path: Path) -> int:
@@ -629,43 +637,119 @@ def _read_regular_path(
         os.close(parent_descriptor)
 
 
-def _collect_directory(
-    root_value: Path | str,
+def _collect_directory_at(
+    borrowed_root_descriptor: int,
     *,
     label: str,
     skip_names: set[str] | None = None,
     reject_isolated: bool = True,
     maximum_files: int = MAX_FILES,
     maximum_total_bytes: int = MAX_TOTAL_BYTES,
+    expected_root_files: dict[str, bytes] | None = None,
+    forbidden_root_names: set[str] | None = None,
 ) -> tuple[dict[str, FileBlob], list[str]]:
-    """Freeze a regular-file tree without following any source symlink."""
+    """Freeze a tree through a borrowed directory fd without closing the caller fd."""
 
-    root = _normalized_path(root_value)
-    if _has_isolated_component(root) and reject_isolated:
-        raise ReleaseError(f"{label} cannot use protected instructor material")
     try:
-        if root.is_symlink():
-            raise ReleaseError(f"{label} must be a real directory, not a symlink")
-        canonical = root.resolve(strict=True)
-    except (OSError, RuntimeError, ValueError) as error:
-        raise ReleaseError(f"could not resolve {label}: {error}") from error
-    if _has_isolated_component(canonical) and reject_isolated:
-        raise ReleaseError(f"{label} cannot use protected instructor material")
-    if not canonical.is_dir():
-        raise ReleaseError(f"{label} must be a directory")
-    root_descriptor = _open_directory_chain(canonical)
+        root_descriptor = os.dup(borrowed_root_descriptor)
+        root_metadata = os.fstat(root_descriptor)
+    except OSError as error:
+        raise ReleaseError(f"could not duplicate pinned {label} root: {error}") from error
+    if not stat.S_ISDIR(root_metadata.st_mode):
+        os.close(root_descriptor)
+        raise ReleaseError(f"{label} root descriptor is not a directory")
     skipped: list[str] = []
     files: dict[str, FileBlob] = {}
     collision_keys: dict[str, str] = {}
     total_bytes = 0
+    total_entries = 0
+    maximum_entries = maximum_files + 1_024
     normalized_skips = {name.casefold() for name in (skip_names or set())}
+    normalized_forbidden_roots = {
+        name.casefold() for name in (forbidden_root_names or set())
+    }
 
     def walk(directory_descriptor: int, prefix: tuple[str, ...]) -> None:
-        nonlocal total_bytes
+        nonlocal total_bytes, total_entries
+        names: list[str] = []
         try:
-            names = sorted(os.listdir(directory_descriptor))
+            with os.scandir(directory_descriptor) as entries:
+                for entry in entries:
+                    if total_entries >= maximum_entries:
+                        raise ReleaseError(
+                            f"{label} exceeds the {maximum_entries}-entry limit"
+                        )
+                    total_entries += 1
+                    names.append(entry.name)
         except OSError as error:
             raise ReleaseError(f"could not list {label} safely: {error}") from error
+        names.sort(
+            key=lambda name: (
+                0 if not prefix and name in (expected_root_files or {}) else 1,
+                name,
+            )
+        )
+        preloaded_root_files: dict[str, tuple[os.stat_result, bytes]] = {}
+        if not prefix:
+            root_names: dict[str, str] = {}
+            for name in names:
+                if name != unicodedata.normalize("NFC", name):
+                    raise ReleaseError(f"{label} contains a non-NFC path name")
+                if name in {".", ".."} or "/" in name or "\\" in name:
+                    raise ReleaseError(f"{label} contains an unsafe path name")
+                folded_name = name.casefold()
+                if folded_name in root_names:
+                    raise ReleaseError(
+                        f"{label} has a case-insensitive path collision"
+                    )
+                root_names[folded_name] = name
+                if (
+                    reject_isolated
+                    and folded_name == ISOLATED_DIRECTORY_NAME.casefold()
+                ):
+                    raise ReleaseError(
+                        f"{label} contains protected instructor material"
+                    )
+            forbidden = normalized_forbidden_roots & set(root_names)
+            if forbidden:
+                marker = root_names[sorted(forbidden)[0]]
+                raise ReleaseError(
+                    f"{label} contains a forbidden root marker: {marker}"
+                )
+            for expected_name, expected_data in (expected_root_files or {}).items():
+                if expected_name not in names:
+                    raise ReleaseError(
+                        f"{label} lost a classified root control file: {expected_name}"
+                    )
+                try:
+                    metadata = os.stat(
+                        expected_name,
+                        dir_fd=directory_descriptor,
+                        follow_symlinks=False,
+                    )
+                except OSError as error:
+                    raise ReleaseError(
+                        f"could not inspect {label} root control file safely: "
+                        f"{expected_name}"
+                    ) from error
+                if not stat.S_ISREG(metadata.st_mode):
+                    raise ReleaseError(
+                        f"{label} root control file is no longer regular: "
+                        f"{expected_name}"
+                    )
+                data = _read_regular_file_at(
+                    directory_descriptor,
+                    expected_name,
+                    label=f"{label} root control file {expected_name}",
+                    maximum_bytes=MAX_FILE_BYTES,
+                    expected=metadata,
+                )
+                if data != expected_data:
+                    raise ReleaseError(
+                        f"{label} root control file changed after classification: "
+                        f"{expected_name}"
+                    )
+                preloaded_root_files[expected_name] = (metadata, data)
         local_names: dict[str, str] = {}
         for name in names:
             if name != unicodedata.normalize("NFC", name):
@@ -691,14 +775,18 @@ def _collect_directory(
                     f"{label} has a normalized path collision"
                 )
             collision_keys[collision_key] = relative
-            try:
-                metadata = os.stat(
-                    name,
-                    dir_fd=directory_descriptor,
-                    follow_symlinks=False,
-                )
-            except OSError as error:
-                raise ReleaseError(f"could not inspect {label} safely: {error}") from error
+            preloaded = preloaded_root_files.get(name) if not prefix else None
+            if preloaded is None:
+                try:
+                    metadata = os.stat(
+                        name,
+                        dir_fd=directory_descriptor,
+                        follow_symlinks=False,
+                    )
+                except OSError as error:
+                    raise ReleaseError(f"could not inspect {label} safely: {error}") from error
+            else:
+                metadata, data = preloaded
             if stat.S_ISLNK(metadata.st_mode):
                 raise ReleaseError(f"{label} contains a symlink: {relative}")
             if stat.S_ISDIR(metadata.st_mode):
@@ -716,13 +804,14 @@ def _collect_directory(
                 )
             if len(files) >= maximum_files:
                 raise ReleaseError(f"{label} exceeds the {maximum_files}-file limit")
-            data = _read_regular_file_at(
-                directory_descriptor,
-                name,
-                label=f"{label} file {relative}",
-                maximum_bytes=MAX_FILE_BYTES,
-                expected=metadata,
-            )
+            if preloaded is None:
+                data = _read_regular_file_at(
+                    directory_descriptor,
+                    name,
+                    label=f"{label} file {relative}",
+                    maximum_bytes=MAX_FILE_BYTES,
+                    expected=metadata,
+                )
             total_bytes += len(data)
             if total_bytes > maximum_total_bytes:
                 raise ReleaseError(
@@ -738,11 +827,51 @@ def _collect_directory(
 
     try:
         walk(root_descriptor, ())
+        if expected_root_files is not None and not set(expected_root_files).issubset(files):
+            raise ReleaseError(f"{label} lost a classified root control file")
     except OSError as error:
         raise ReleaseError(f"could not traverse {label} safely: {error}") from error
     finally:
         os.close(root_descriptor)
     return files, skipped
+
+
+def _collect_directory(
+    root_value: Path | str,
+    *,
+    label: str,
+    skip_names: set[str] | None = None,
+    reject_isolated: bool = True,
+    maximum_files: int = MAX_FILES,
+    maximum_total_bytes: int = MAX_TOTAL_BYTES,
+) -> tuple[dict[str, FileBlob], list[str]]:
+    """Path wrapper for the explicit borrowed-fd tree freezer."""
+
+    root = _normalized_path(root_value)
+    if _has_isolated_component(root) and reject_isolated:
+        raise ReleaseError(f"{label} cannot use protected instructor material")
+    try:
+        if root.is_symlink():
+            raise ReleaseError(f"{label} must be a real directory, not a symlink")
+        canonical = root.resolve(strict=True)
+    except (OSError, RuntimeError, ValueError) as error:
+        raise ReleaseError(f"could not resolve {label}: {error}") from error
+    if _has_isolated_component(canonical) and reject_isolated:
+        raise ReleaseError(f"{label} cannot use protected instructor material")
+    if not canonical.is_dir():
+        raise ReleaseError(f"{label} must be a directory")
+    root_descriptor = _open_directory_chain(canonical)
+    try:
+        return _collect_directory_at(
+            root_descriptor,
+            label=label,
+            skip_names=skip_names,
+            reject_isolated=reject_isolated,
+            maximum_files=maximum_files,
+            maximum_total_bytes=maximum_total_bytes,
+        )
+    finally:
+        os.close(root_descriptor)
 
 
 def _file_records(files: dict[str, bytes]) -> list[dict[str, object]]:
@@ -2794,6 +2923,32 @@ def _verify_checksum_tree(root: Path) -> dict[str, object]:
         maximum_files=MAX_PACKAGE_FILES,
         maximum_total_bytes=MAX_PACKAGE_TOTAL_BYTES,
     )
+    return _verify_checksum_files(files)
+
+
+def _verify_checksum_tree_at(
+    borrowed_root_descriptor: int,
+    *,
+    expected_manifest: bytes | None = None,
+    forbidden_root_names: set[str] | None = None,
+) -> dict[str, object]:
+    files, _ = _collect_directory_at(
+        borrowed_root_descriptor,
+        label="release package",
+        reject_isolated=True,
+        maximum_files=MAX_PACKAGE_FILES,
+        maximum_total_bytes=MAX_PACKAGE_TOTAL_BYTES,
+        expected_root_files=(
+            {"PACKAGE_MANIFEST.json": expected_manifest}
+            if expected_manifest is not None
+            else None
+        ),
+        forbidden_root_names=forbidden_root_names,
+    )
+    return _verify_checksum_files(files)
+
+
+def _verify_checksum_files(files: dict[str, FileBlob]) -> dict[str, object]:
     if "CHECKSUMS.sha256" not in files or "PACKAGE_MANIFEST.json" not in files:
         raise ReleaseError("release package is missing manifest or checksums")
     expected = _parse_checksums(files["CHECKSUMS.sha256"].data)

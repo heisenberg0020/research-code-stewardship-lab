@@ -43,13 +43,14 @@ jobs:
         run: |
           python docs/benchmark-evidence/render_chart.py --check
 
-      - name: Check public command entry point, lifecycles, and release packaging
+      - name: Check command entry point, lifecycles, release packaging, and static views
         run: |
           python -m unittest \
             tests.test_rcsl \
             tests.test_audit_lifecycle \
             tests.test_training_progress \
-            tests.test_release_packaging
+            tests.test_release_packaging \
+            tests.test_static_view
 
       - name: Run Level 1-4 public regression checks
         run: |

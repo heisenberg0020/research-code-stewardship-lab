@@ -91,12 +91,62 @@ class RcslCommandTests(unittest.TestCase):
             "overview",
             "doctor",
             "start",
+            "view",
             "install-skill",
             "init-audit",
             "lint-audit",
             "status-audit",
         ):
             self.assertIn(command, result.stdout)
+
+    def test_view_cli_maps_repeatable_open_demos_and_optional_evidence(self) -> None:
+        module = load_rcsl_module()
+        output = Path("/tmp/rcsl-static-view")
+        with mock.patch.object(
+            module.view_core, "build_static_view", return_value=output
+        ) as build:
+            returncode, stdout, stderr = run_module_cli(
+                module,
+                "view",
+                "build",
+                "--open-demo",
+                "/tmp/open-one",
+                "--open-demo",
+                "/tmp/open-two",
+                "--audit-workspace",
+                "/tmp/audit",
+                "--training-workspace",
+                "/tmp/training",
+                "--output",
+                str(output),
+            )
+
+        self.assertEqual(returncode, 0, stderr)
+        self.assertIn("Offline static view CREATED", stdout)
+        self.assertIn("local-sensitive-not-deployable", stdout)
+        build.assert_called_once_with(
+            [Path("/tmp/open-one"), Path("/tmp/open-two")],
+            output,
+            audit_workspace=Path("/tmp/audit"),
+            training_workspace=Path("/tmp/training"),
+        )
+
+    def test_view_verify_cli_preserves_separate_claims(self) -> None:
+        module = load_rcsl_module()
+        verification = {
+            "integrity_status": "pass",
+            "privacy_classification": "open-demo-only-offline",
+            "scientific_correctness": "not_assessed",
+        }
+        with mock.patch.object(
+            module.view_core, "verify_static_view", return_value=verification
+        ):
+            returncode, stdout, stderr = run_module_cli(
+                module, "view", "verify", "/tmp/view", "--json"
+            )
+
+        self.assertEqual(returncode, 0, stderr)
+        self.assertEqual(json.loads(stdout), verification)
 
     def test_invalid_level_is_rejected(self) -> None:
         result = run_cli("start", "--level", "5")

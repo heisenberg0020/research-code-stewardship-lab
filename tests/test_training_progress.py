@@ -16,6 +16,7 @@ from stewardship_lab.training import (
     TrainingError,
     check_worksheet,
     export_progress,
+    get_redacted_status,
     get_status,
     initialize_workspace,
     load_progress,
@@ -672,6 +673,15 @@ class TrainingProgressTests(unittest.TestCase):
         self.assertNotIn("private@example.invalid", exported)
         self.assertNotIn("unknown claim impact", exported)
         self.assertIn("reviewer-1", exported)
+
+        redacted = get_redacted_status(self.workspace)
+        self.assertNotIn("learner_label", redacted)
+        self.assertNotIn("evidence_gaps", redacted["targets"]["L1"])
+        self.assertEqual(
+            redacted["targets"]["L1"]["active_reviews"][0]["reviewer"],
+            "reviewer-1",
+        )
+        self.assertEqual(redacted["scientific_correctness"], "not_assessed")
 
         retryable_output = self.workspace / "retryable-report.json"
         with mock.patch(

@@ -94,6 +94,8 @@ PLACEHOLDER_PATTERN = re.compile(
 )
 ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+GIT_REVISION = re.compile(r"^[0-9a-f]{40,64}$")
+UNAVAILABLE_CASE_REVISION = "unavailable-local-source-revision"
 
 TOP_LEVEL_KEYS = {
     "schema_version",
@@ -223,7 +225,11 @@ def _directory_open_flags() -> int:
 
 
 def _file_open_flags() -> int:
-    return os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    return (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
 
 
 def _open_directory_chain(path: Path) -> int:
@@ -588,7 +594,21 @@ def _case_revision() -> str:
         check=False,
     )
     revision = result.stdout.strip()
-    return revision if result.returncode == 0 and revision else "unavailable-local-source-revision"
+    return (
+        revision
+        if result.returncode == 0 and GIT_REVISION.fullmatch(revision)
+        else UNAVAILABLE_CASE_REVISION
+    )
+
+
+def _validate_case_revision(value: object, *, field: str) -> str:
+    revision = _validate_text(value, field=field)
+    if revision != UNAVAILABLE_CASE_REVISION and not GIT_REVISION.fullmatch(revision):
+        raise TrainingError(
+            f"{field} must be a lowercase 40-64 character Git revision or "
+            f"{UNAVAILABLE_CASE_REVISION}"
+        )
+    return revision
 
 
 def _workspace_readme() -> str:
@@ -986,7 +1006,7 @@ def _validate_progress(
         raise TrainingError("validator scope has changed or is invalid")
     if progress["case_id"] != CASE_ID:
         raise TrainingError("training case ID has changed or is invalid")
-    _validate_text(progress["case_revision"], field="case revision")
+    _validate_case_revision(progress["case_revision"], field="case revision")
     _validate_label(progress["learner_label"], field="learner label")
     if progress["exposure_state"] != EXPOSURE_STATE:
         raise TrainingError("public training exposure state must remain honor isolation")
@@ -1420,7 +1440,10 @@ def _active_reviews(target_record: dict[str, object]) -> list[dict[str, object]]
     for review in target_record["reviews"]:
         if review["attempt_id"] == latest_attempt_id:
             by_reviewer[review["reviewer"]] = review
-    return list(by_reviewer.values())
+    return sorted(
+        by_reviewer.values(),
+        key=lambda review: int(str(review["id"]).rsplit("R", 1)[1]),
+    )
 
 
 def _human_review_state(target_record: dict[str, object]) -> str:
@@ -1561,6 +1584,25 @@ def _redacted_status(status: dict[str, object]) -> dict[str, object]:
         "No worksheet snapshots are exported. Structure and declared human reviews are not scientific certification."
     )
     return redacted
+
+
+def get_redacted_status(workspace_value: Path | str) -> dict[str, object]:
+    """Return the stable, read-only export projection for one workspace.
+
+    The projection omits learner labels, worksheet snapshots, and free-form
+    review text. Reviewer labels are replaced with deterministic aliases local
+    to this snapshot. Automatic fields remain structural observations rather
+    than scientific or maturity judgments.
+    """
+
+    workspace = _validate_workspace_location(workspace_value, creating=False)
+    workspace_descriptor = _open_verified_root(workspace)
+    try:
+        return _redacted_status(
+            _status_from_descriptor(workspace, workspace_descriptor)
+        )
+    finally:
+        os.close(workspace_descriptor)
 
 
 def _safe_markdown(value: object) -> str:
