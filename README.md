@@ -29,7 +29,14 @@
 > **这是一个研究代码审计实验室，而不是单纯的编程教程。**
 > 它训练你判断：实现是否忠实于论文、实验是否可被信任、证据是否支撑主张，以及 Coding Agent 是否始终处于人类批准的边界内。
 
-> **当前推荐入口：**从 [LLM4SBR 四级训练包](LLM4SBR_research_audit_training_v2/README.md) 开始。`LLM4SBR_code_judgement_training/` 保留为早期的算法判错练习，不是新的默认学习路径。
+RCSL 现在有两个显式模式，共用 G0、L1–L4、证据护照与人类决策边界：
+
+| 模式 | 用途 | Canonical 命令入口 |
+| --- | --- | --- |
+| **Mode Train** | 用公开案例训练人类的科研代码判断力；它不是训练模型 | `python scripts/rcsl.py train ...` |
+| **Mode Audit** | 绑定真实项目的 clean Git `HEAD`，管理 G0、finding、evidence、事件链与人工复审报告 | `python scripts/rcsl.py audit ...` |
+
+> **训练推荐入口：**从 [LLM4SBR 四级训练包](LLM4SBR_research_audit_training_v2/README.md) 开始。`LLM4SBR_code_judgement_training/` 保留为早期的算法判错练习，不是新的默认学习路径。
 
 ## Quick start
 
@@ -42,24 +49,32 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 
-python scripts/rcsl.py doctor
-python scripts/rcsl.py start --level 1
+python scripts/rcsl.py train overview
+python scripts/rcsl.py train doctor
+python scripts/rcsl.py train start --level 1
 ```
 
 完成 Level 1 后，按顺序继续 Level 2 → 3 → 4。任何时候都可运行以下命令确认**公开材料**的可运行性：
 
 ```bash
-python scripts/rcsl.py validate
+python scripts/rcsl.py train validate
 ```
 
-如果你要审计自己的研究项目，而不只是完成案例题，可以创建一个独立的证据工作区：
+如果你要审计自己的研究项目，请把工作区放在目标项目之外，并绑定它当前的 clean Git `HEAD`：
 
 ```bash
-python scripts/rcsl.py init-audit --level 1 --output my-audit
-python scripts/rcsl.py status-audit my-audit
+PROJECT="/absolute/path/to/clean-git-project"
+WORKSPACE="/absolute/path/outside-project/my-audit"
+python scripts/rcsl.py audit init --project "$PROJECT" --output "$WORKSPACE" \
+  --level 1 --actor "your-name"
+python scripts/rcsl.py audit status "$WORKSPACE"
 ```
 
-它会生成 G0 研究契约、快速分诊、Agent 委派边界和证据护照四份模板；不会修改被审计项目，也不会替你作出科学结论。
+它会生成 G0 契约模板、结构化 finding、evidence 和本地事件链所需的工作区；G0 初始为 `draft`，必须由人类填写、记录 gate 决定后才能通过 preflight。完整命令链见 [Mode Audit 指南](docs/AUDIT_MODE.md)。
+
+Mode Audit 默认**不执行目标项目代码、不联网、不修改目标项目**。`--actor` / `--reviewer` 只是未认证的记录标签；hash chain 只检查仍被保留的本地记录是否自洽。任何 `current`、`ledger-consistent` 或 `review-ready` 都不是 scientific PASS。
+
+旧的顶层命令（如 `doctor`、`start`、`validate`、`init-audit`）仍作为兼容别名保留；新工作流应使用上面的 `train` / `audit` 命名空间。
 
 完整的按角色说明见 [开始指南](docs/GETTING_STARTED.md)（[English](docs/GETTING_STARTED_EN.md)）。
 
@@ -67,11 +82,11 @@ python scripts/rcsl.py status-audit my-audit
 
 | 你现在想做什么？ | 从这里开始 | 你会得到什么 |
 | --- | --- | --- |
-| **学习者**：练习发现“可运行但不可信”的科研代码 | [四级训练包](LLM4SBR_research_audit_training_v2/README.md) → `python scripts/rcsl.py start --level 1` | 基于证据的审计记录，而不只是一个候选答案 |
+| **学习者**：练习发现“可运行但不可信”的科研代码 | [四级训练包](LLM4SBR_research_audit_training_v2/README.md) → `python scripts/rcsl.py train start --level 1` | 基于证据的审计记录，而不只是一个候选答案 |
 | **复现者 / 审稿人**：先理解论文，再看源码 | [Source-blind 论文学习协议](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md) | `PRE_AUDIT_BASELINE`：公式、数据流、指标和 claim 边界 |
-| **项目负责人 / 审计员**：审计一个真实项目并管理证据 | `python scripts/rcsl.py init-audit --level 1 --output my-audit` → [能力模型](docs/COMPETENCY_MODEL.md) | 研究契约、分诊记录、委派边界与逐项证据护照 |
+| **项目负责人 / 审计员**：审计一个真实项目并管理证据 | [Mode Audit 指南](docs/AUDIT_MODE.md) → `python scripts/rcsl.py audit init ...` | 绑定 commit 的 G0、finding/evidence 生命周期、可验证的本地事件链与人工复审报告 |
 | **研究负责人**：把另一篇论文变成训练包 | [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md) → `python scripts/rcsl.py install-skill --dry-run` | 需经人类批准的题目设计规格与可验证训练包 |
-| **维护者**：确认仓库是否仍健康 | `python scripts/rcsl.py doctor` → `python scripts/rcsl.py validate` | 公开检查结果与下一步排错入口 |
+| **维护者**：确认仓库是否仍健康 | `python scripts/rcsl.py train doctor` → `python scripts/rcsl.py train validate` | 公开检查结果与下一步排错入口 |
 
 ## Four levels
 
@@ -151,7 +166,8 @@ README.md                              项目简介与通用训练框架
 README_EN.md                           英文版项目简介
 REPOSITORY_MAP.md                      全仓库导航
 requirements.txt                       本地公开检查的学习者依赖
-scripts/rcsl.py                        公开材料导航、验证与本地审计证据工作区入口
+scripts/rcsl.py                        Mode Train / Mode Audit 的统一 CLI 入口
+stewardship_lab/                       真实项目审计生命周期、finding、证据与本地事件链内核
 LICENSE                                原创软件的 Apache-2.0 许可证
 DOCUMENTATION_LICENSE.md               原创文档的 CC BY 4.0 许可说明
 THIRD_PARTY_NOTICES.md                 第三方来源、排除项与获取方式
@@ -167,6 +183,10 @@ skills/research-code-audit-training/   可迁移的题目生成 Skill 及参考�
 docs/                                  复现协议、实施审核和设计决策记录
   GETTING_STARTED.md                   按学习者 / 维护者 / 研究负责人分流的开始指南
   GETTING_STARTED_EN.md                英文开始指南
+  AUDIT_MODE.md                        真实项目审计命令、状态、边界与完整示例
+  AUDIT_MODE_EN.md                     真实项目审计英文指南
+  DUAL_MODE_ROADMAP.md                 Train / Audit 的分阶段实施路线图
+  DUAL_MODE_ROADMAP_EN.md              双模式英文路线图
   COMPETENCY_MODEL.md                  G0、四级纵轴、七项横向能力、成熟度与 capstone
   CASE_RELEASE_MODEL.md                Open Demo 与真正 Blind Challenge 的发布边界
   PAPER_ONLY_REPRODUCTION_PROTOCOL.md  Source-blind 论文学习与 clean-room 复现双模式协议

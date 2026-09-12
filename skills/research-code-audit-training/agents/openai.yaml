@@ -1,4 +1,4 @@
 interface:
-  display_name: "Research Code Audit Training"
-  short_description: "Build auditable research-code training and evidence"
-  default_prompt: "Use $research-code-audit-training to establish a research contract and build an auditable four-level stewardship exercise from a paper and its source code."
+  display_name: "Research Code Stewardship"
+  short_description: "Audit real projects or build evidence-rich training"
+  default_prompt: "Use $research-code-audit-training to choose a real-project audit or training-package workflow, establish G0, and preserve an evidence-backed human decision trail."

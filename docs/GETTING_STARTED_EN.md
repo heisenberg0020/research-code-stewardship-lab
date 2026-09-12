@@ -4,14 +4,16 @@
 
 **Research Code Stewardship Lab** helps you decide whether runnable research code, experiments, and agent workflows still honor the paper, experimental protocol, and evidence trail behind them. It is not a code-writing speed course. It develops evidence-based research judgment for the coding-agent era.
 
-[中文指南](GETTING_STARTED.md) · [Repository map](../REPOSITORY_MAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Four-level course](../LLM4SBR_research_audit_training_v2/README.md)
+[中文指南](GETTING_STARTED.md) · [Repository map](../REPOSITORY_MAP.md) · [Competency model](COMPETENCY_MODEL_EN.md) · [Mode Audit](AUDIT_MODE_EN.md) · [Dual-mode roadmap](DUAL_MODE_ROADMAP_EN.md)
+
+The CLI now has two explicit paths: `rcsl.py train ...` develops human capability (it does not train a model), while `rcsl.py audit ...` records evidence and decisions for a real Git project. Legacy top-level commands remain compatibility aliases only.
 
 ## Choose your path
 
 | You are a… | Start with… | You will leave with… |
 | --- | --- | --- |
-| **Learner** | Audit the LLM4SBR case study from Level 1 | An evidence chain: location, violated contract, counterexample, causal effect, and safe repair |
-| **Project owner / auditor** | Create a separate audit workspace for your own project | A G0 research contract, triage card, agent delegation contract, and evidence passport |
+| **Learner** | `python scripts/rcsl.py train start --level 1` | An evidence chain: location, violated contract, counterexample, causal effect, and safe repair |
+| **Project owner / auditor** | Read the [Mode Audit guide](AUDIT_MODE_EN.md), then bind a clean Git `HEAD` with `python scripts/rcsl.py audit init ...` | G0, structured finding/evidence lifecycle, local event chain, and a human-review report |
 | **Reviewer / maintainer** | Run public checks and review the package contract, documentation, and entry points | A reproducible public-check report and a list of risks that still need human review |
 | **Research owner** | Freeze the paper–code–experiment protocol, then design a new package with the Skill | A human-approved four-level design specification—not unreviewed candidate code |
 
@@ -25,8 +27,9 @@ From the repository root:
 
 ```bash
 python -m pip install -r requirements.txt
-python scripts/rcsl.py doctor
-python scripts/rcsl.py validate
+python scripts/rcsl.py train overview
+python scripts/rcsl.py train doctor
+python scripts/rcsl.py train validate
 ```
 
 You should see `LEVEL 1: PASS` through `LEVEL 4: PASS`. That means the learner-visible package is runnable and its public structure is intact. It does **not** decide which candidate is faithful to the paper or establish a scientific conclusion.
@@ -79,13 +82,19 @@ The expected output is a traceable maintenance note: what changed, which public 
 
 ## Path C: Audit a real project
 
-Choose the level whose contract is currently the earliest suspected failure, then create a workspace outside the audited project. For example, start at Level 2 when investigating data identity or checkpoint flow:
+Choose the level whose contract is the earliest suspected failure. The target must be a clean Git worktree, and the new workspace must be outside it. For example, begin at L2 when investigating data identity or checkpoint flow:
 
 ```bash
-python scripts/rcsl.py init-audit --level 2 --output ../my-project-audit
+rcsl() { python scripts/rcsl.py "$@"; }
+PROJECT="/absolute/path/to/clean-git-project"
+WORKSPACE="/absolute/path/outside-project/my-project-audit"
+
+rcsl audit init --project "$PROJECT" --output "$WORKSPACE" \
+  --level 2 --actor "researcher"
+rcsl audit status "$WORKSPACE"
 ```
 
-The command copies four public templates plus workspace metadata. It does not read instructor material, modify the target project, or overwrite an existing path. Edit these files in the new directory:
+Initialization pins the current `HEAD` and branch and creates four public templates, `findings/`, workspace metadata, and a hash-chained event log. G0 starts as `draft`. Edit these files in the new directory:
 
 | File | Decision or evidence you provide |
 | --- | --- |
@@ -94,14 +103,47 @@ The command copies four public templates plus workspace metadata. It does not re
 | `delegation-contract-template.md` | What an agent may and may not do, required evidence, and human approval points |
 | `evidence-passport-template.md` | Exact location, first failed contract, counterexample, causal impact, repair, and signed decision for one finding |
 
-Replace every double-braced prompt with evidence. When something is unknown, write `Unknown — reason and owner` rather than guessing. Check progress at any time:
+Replace every double-braced prompt in the G0 research contract with a truthful declaration. When something is unknown, write `Unknown — reason and owner` rather than guessing. Then check G0 and record the human decision:
 
 ```bash
-python scripts/rcsl.py status-audit ../my-project-audit
-python scripts/rcsl.py lint-audit ../my-project-audit
+rcsl audit gate check "$WORKSPACE"
+rcsl audit gate record "$WORKSPACE" --decision approved \
+  --reviewer "research-owner" --rationale "Scope and evidence plan reviewed."
+rcsl audit preflight "$WORKSPACE"
 ```
 
-A successful `lint-audit` means only that files, fixed sections, and prompts are structurally complete. It **does not** establish that the research question is legitimate, a finding is correct, or a scientific claim is approved. Those decisions remain with a named human owner.
+Only after preflight succeeds, record a reviewable claim as a finding, append evidence, and transition its state explicitly:
+
+```bash
+rcsl audit finding add "$WORKSPACE" --id F-001 \
+  --title "Possible split-lineage mismatch" --layer L2 --competency C2 \
+  --severity high --claim "Generated IDs may cross the declared split boundary." \
+  --first-contract "Sample identity remains split-isolated." --actor "researcher"
+
+rcsl audit evidence add "$WORKSPACE" --finding F-001 --id E-001 \
+  --kind observed --reference "config/split.yaml" \
+  --summary "The recorded split rule needs independent recomputation." --actor "researcher"
+
+rcsl audit finding transition "$WORKSPACE" --finding F-001 --to triaged \
+  --actor "researcher" --rationale "Location and next decisive check are recorded."
+rcsl audit finding list "$WORKSPACE"
+
+# After a human completes the other three templates, check the whole workspace and hand it off.
+rcsl audit lint "$WORKSPACE"
+rcsl audit verify "$WORKSPACE"
+rcsl audit report build "$WORKSPACE" --output "$WORKSPACE/review.md" --format markdown
+```
+
+If the target `HEAD` changes, preflight refuses to continue. A human must review the change and explicitly replace the baseline. This resets G0 to `draft`; old findings remain bound to the old commit:
+
+```bash
+rcsl audit rebaseline "$WORKSPACE" --actor "research-owner" \
+  --reason "Reviewed the new commit; prior evidence remains on the old baseline."
+```
+
+`lint`, `gate check`, `preflight`, `verify`, and `report build` speak only to their declared structural or local-integrity scope. They **do not** establish that the research question is legitimate, a finding holds, a repair is correct, or a scientific claim is approved. `--actor` and `--reviewer` are unauthenticated record labels. The hash chain can expose inconsistencies in retained local history; it cannot prevent deletion or wholesale replacement or authenticate identity. No scoped status is a scientific PASS.
+
+By default Mode Audit only reads the target and Git metadata. It **does not execute project code, use the network, or modify the target project**. Those actions require separate explicit authorization outside this tool. See the [complete Mode Audit guide](AUDIT_MODE_EN.md) for command states, finding transitions, and hash-chain limits.
 
 See the [modern research programmer competency model](COMPETENCY_MODEL_EN.md) for the seven accountable capabilities, four maturity bands, and capstone.
 
@@ -160,6 +202,7 @@ Every audit must therefore return to primary evidence, the frozen protocol, and 
 
 - Need the full directory guide? Read the [repository map](../REPOSITORY_MAP.md).
 - Ready to start LLM4SBR? Open the [four-level course](../LLM4SBR_research_audit_training_v2/README.md).
-- Auditing your own project? Read the [competency model](COMPETENCY_MODEL_EN.md), then create an evidence workspace with `init-audit`.
+- Auditing your own project? Follow the [Mode Audit guide](AUDIT_MODE_EN.md) and use `audit init` to create a commit-bound evidence workspace.
+- Need to see what is implemented and what comes next? Read the [dual-mode roadmap](DUAL_MODE_ROADMAP_EN.md).
 - Want a paper-first, source-blind baseline? Use the [Source-Blind Protocol](PAPER_ONLY_REPRODUCTION_PROTOCOL.md).
 - Want to adapt the workflow to your paper? Read the [Skill](../skills/research-code-audit-training/SKILL.md).

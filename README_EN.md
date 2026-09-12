@@ -29,7 +29,14 @@
 > **This is a research-code audit lab, not simply a programming tutorial.**
 > It teaches you to decide whether an implementation is faithful to a paper, whether an experiment is trustworthy, whether the evidence supports the claim, and whether a coding agent stayed within human-approved boundaries.
 
-> **Recommended current entry:** begin with the [LLM4SBR four-level package](LLM4SBR_research_audit_training_v2/README.md). `LLM4SBR_code_judgement_training/` remains an earlier algorithm-judgment exercise, not the default learning path.
+RCSL now exposes two explicit modes. Both reuse G0, L1–L4, Evidence Passports, and human decision boundaries:
+
+| Mode | Purpose | Canonical command entry |
+| --- | --- | --- |
+| **Mode Train** | Train human research-code judgment with public cases; it does not train a model | `python scripts/rcsl.py train ...` |
+| **Mode Audit** | Bind a real project's clean Git `HEAD` and manage G0, findings, evidence, a local event chain, and a human-review report | `python scripts/rcsl.py audit ...` |
+
+> **Recommended training entry:** begin with the [LLM4SBR four-level package](LLM4SBR_research_audit_training_v2/README.md). `LLM4SBR_code_judgement_training/` remains an earlier algorithm-judgment exercise, not the default learning path.
 
 ## Quick start
 
@@ -42,24 +49,32 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 
-python scripts/rcsl.py doctor
-python scripts/rcsl.py start --level 1
+python scripts/rcsl.py train overview
+python scripts/rcsl.py train doctor
+python scripts/rcsl.py train start --level 1
 ```
 
 Continue Level 2 → 3 → 4 in sequence. At any point, validate the runnable **public materials** with:
 
 ```bash
-python scripts/rcsl.py validate
+python scripts/rcsl.py train validate
 ```
 
-To audit your own research project rather than only solve the case study, create a separate evidence workspace:
+To audit your own research project, put the workspace outside the target project and bind it to the current clean Git `HEAD`:
 
 ```bash
-python scripts/rcsl.py init-audit --level 1 --output my-audit
-python scripts/rcsl.py status-audit my-audit
+PROJECT="/absolute/path/to/clean-git-project"
+WORKSPACE="/absolute/path/outside-project/my-audit"
+python scripts/rcsl.py audit init --project "$PROJECT" --output "$WORKSPACE" \
+  --level 1 --actor "your-name"
+python scripts/rcsl.py audit status "$WORKSPACE"
 ```
 
-This creates templates for the G0 research contract, rapid triage, agent delegation boundary, and evidence passport. It does not modify the audited project or make a scientific decision for you.
+This creates the workspace needed for a G0 contract, structured findings, evidence, and a local event chain. G0 starts as `draft`; a human must complete it and record a gate decision before preflight can succeed. See the full [Mode Audit guide](docs/AUDIT_MODE_EN.md).
+
+Mode Audit **does not execute target-project code, use the network, or modify the target project by default**. `--actor` and `--reviewer` are unauthenticated record labels. The hash chain checks only the internal consistency of retained local records. No `current`, `ledger-consistent`, or `review-ready` state is a scientific PASS.
+
+Legacy top-level commands such as `doctor`, `start`, `validate`, and `init-audit` remain compatibility aliases. New workflows should use the explicit `train` / `audit` namespaces above.
 
 For role-specific instructions, read the [Getting started guide](docs/GETTING_STARTED_EN.md) ([中文](docs/GETTING_STARTED.md)).
 
@@ -67,11 +82,11 @@ For role-specific instructions, read the [Getting started guide](docs/GETTING_ST
 
 | What are you trying to do? | Start here | What you will produce |
 | --- | --- | --- |
-| **Learner:** spot research code that runs but should not be trusted | [Four-level package](LLM4SBR_research_audit_training_v2/README.md) → `python scripts/rcsl.py start --level 1` | An evidence-backed audit record, rather than only a candidate answer |
+| **Learner:** spot research code that runs but should not be trusted | [Four-level package](LLM4SBR_research_audit_training_v2/README.md) → `python scripts/rcsl.py train start --level 1` | An evidence-backed audit record, rather than only a candidate answer |
 | **Reproducer / reviewer:** understand the paper before the implementation | [Source-blind paper-study protocol](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md) | A `PRE_AUDIT_BASELINE` for equations, data flow, metrics, and claim boundaries |
-| **Project owner / auditor:** audit a real project and manage its evidence | `python scripts/rcsl.py init-audit --level 1 --output my-audit` → [competency model](docs/COMPETENCY_MODEL_EN.md) | A research contract, triage record, delegation boundary, and evidence passport |
+| **Project owner / auditor:** audit a real project and manage its evidence | [Mode Audit guide](docs/AUDIT_MODE_EN.md) → `python scripts/rcsl.py audit init ...` | Commit-bound G0, finding/evidence lifecycle, verifiable local event chain, and a human-review report |
 | **Research owner:** turn another paper into a training package | [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md) → `python scripts/rcsl.py install-skill --dry-run` | A human-approved task-design specification and verifiable package |
-| **Maintainer:** check the health of the repository | `python scripts/rcsl.py doctor` → `python scripts/rcsl.py validate` | Public-check results and a clear debugging entry point |
+| **Maintainer:** check the health of the repository | `python scripts/rcsl.py train doctor` → `python scripts/rcsl.py train validate` | Public-check results and a clear debugging entry point |
 
 ## Four levels
 
@@ -150,7 +165,8 @@ README.md                              Chinese overview and general framework
 README_EN.md                           This English overview
 REPOSITORY_MAP.md                      Repository navigation
 requirements.txt                       Learner dependency for local public checks
-scripts/rcsl.py                        Public navigation, validation, and local audit-workspace entry point
+scripts/rcsl.py                        Unified CLI entry point for Mode Train and Mode Audit
+stewardship_lab/                       Real-project lifecycle, findings, evidence, and local event-chain core
 LICENSE                                Apache-2.0 license for original software
 DOCUMENTATION_LICENSE.md               CC BY 4.0 notice for original documentation
 THIRD_PARTY_NOTICES.md                 Third-party sources, exclusions, and access links
@@ -166,6 +182,10 @@ skills/research-code-audit-training/   Portable training-package generation Skil
 docs/                                  Protocols, examples, and implementation decisions
   GETTING_STARTED.md                   Task-oriented Chinese start guide
   GETTING_STARTED_EN.md                Task-oriented English start guide
+  AUDIT_MODE.md                        Real-project audit commands, states, boundaries, and complete example
+  AUDIT_MODE_EN.md                     English Mode Audit guide
+  DUAL_MODE_ROADMAP.md                 Phased Train/Audit implementation roadmap
+  DUAL_MODE_ROADMAP_EN.md              English dual-mode roadmap
   COMPETENCY_MODEL_EN.md               G0, four-level axis, seven capabilities, maturity, and capstone
   CASE_RELEASE_MODEL_EN.md              Open Demo and true Blind Challenge release boundaries
   PAPER_ONLY_REPRODUCTION_PROTOCOL.md  Source-blind paper study and clean-room protocol
