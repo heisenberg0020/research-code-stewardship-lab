@@ -9,6 +9,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
+import base64
+import binascii
 import hashlib
 import html
 import json
@@ -23,6 +25,8 @@ from typing import Iterator
 import unicodedata
 import uuid
 
+from stewardship_lab import bindings
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 TRAINING_PACKAGE = REPOSITORY_ROOT / "LLM4SBR_research_audit_training_v2"
@@ -31,7 +35,7 @@ PROGRESS_FILENAME = "progress.json"
 LOCK_FILENAME = ".rcsl-progress.lock"
 ISOLATED_DIRECTORY_NAME = "DO_NOT_OPEN_UNTIL_FINISHED"
 WORKSPACE_TYPE = "rcsl-training-progress"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 CASE_ID = "rcsl/llm4sbr-research-audit-v2"
 EXPOSURE_STATE = "open-demo-honor-isolation"
 VALIDATOR_SCOPE = "structure-only; semantic and scientific assessment not performed"
@@ -40,6 +44,14 @@ MAX_PROGRESS_BYTES = 32_000_000
 MAX_ATTEMPTS_PER_TARGET = 100
 MAX_REVIEWS_PER_TARGET = 1_000
 MAX_JSON_NESTING = 100
+MAX_CASE_BYTES = 12_000_000
+MAX_PACKET_BYTES = 24_000_000
+PACKET_TYPE = "rcsl-training-review-packet"
+PACKET_SCHEMA_VERSION = 1
+PACKET_RESOURCE_ALIASES = {
+    "RUBRIC.md": "skills/research-code-audit-training/assets/maturity-rubric.md",
+    "CAPSTONE_BRIEF.md": "LLM4SBR_research_audit_training_v2/CAPSTONE_BRIEF.md",
+}
 
 BANDS = ("Recognize", "Prove", "Direct", "Steward")
 RATING_VALUES = ("not-observed", "partial", "demonstrated", "cannot-assess")
@@ -82,6 +94,56 @@ RESOURCE_SOURCES = {
 PASSPORT_TEMPLATE = ASSET_DIRECTORY / "learner-evidence-passport-template.md"
 CAPSTONE_TEMPLATE = ASSET_DIRECTORY / "capstone-response-template.md"
 
+# This is an explicit learner-visible Open Demo boundary, not a directory scan.
+# A missing or symlinked item fails closed. Instructor/post-completion paths are
+# neither listed nor inspected. Keep this list aligned with public case changes.
+_PACKAGE_PREFIX = "LLM4SBR_research_audit_training_v2"
+_CASE_SHARED = (
+    "README.md", "CASE_FILE.md", "CASE_FILE_EN.md", "FRAMEWORK_OVERVIEW.md",
+    "PROGRESSION.md", "CAPSTONE_BRIEF.md", "run_all_public_checks.py",
+    "shared/__init__.py", "shared/synthetic_sbr.py",
+    "shared/metrics_reference.py", "shared/schemas.py",
+)
+_LEVEL_FILES = {
+    "level_1_algorithm_semantics": (
+        "README.md", "PAPER_MAP.md", "ANSWER_SHEET.md", "run_smoke.py",
+        *(f"candidates/{candidate}.py" for candidate in "ABCDE"),
+    ),
+    "level_2_pipeline_integrity": (
+        "README.md", "FROZEN_PIPELINE_SPEC.md", "ANSWER_SHEET.md",
+        "run_smoke.py", "_runtime.py",
+        *(f"candidates/{candidate}/{name}" for candidate in "ABCDE"
+          for name in ("__init__.py", "pipeline.py", "data.py", "metrics.py", "trainer.py")),
+    ),
+    "level_3_scientific_validity": (
+        "README.md", "REVIEW_CRITERIA.md", "ANSWER_SHEET.md",
+        "validate_evidence_schema.py",
+        *(f"dossiers/{candidate}/{name}" for candidate in "ABCDE"
+          for name in ("experiment_config.json", "planned_runs.csv", "runs.csv",
+                       "aggregate.csv", "claim.json", "claim.md")),
+    ),
+    "level_4_agent_experiment_governance": (
+        "README.md", "FROZEN_PROTOCOL.md", "ANSWER_SHEET.md",
+        "validate_ledger_schema.py",
+        *(f"runs/{candidate}/{name}" for candidate in "ABCDE"
+          for name in ("protocol.json", "agent_events.jsonl", "approvals.jsonl",
+                       "run_ledger.csv", "report_manifest.json")),
+    ),
+}
+_CAPSTONE_ARTIFACTS = (
+    "change.diff", "run_config.json", "run_ledger.csv", "agent_events.csv",
+    "approvals.csv", "claim_note.md",
+)
+CASE_SOURCE_PATHS = (
+    *(f"{_PACKAGE_PREFIX}/{name}" for name in _CASE_SHARED),
+    *(f"{_PACKAGE_PREFIX}/{level}/{name}"
+      for level, names in _LEVEL_FILES.items() for name in names),
+    *(f"{_PACKAGE_PREFIX}/capstone_artifacts/{name}" for name in _CAPSTONE_ARTIFACTS),
+    "skills/research-code-audit-training/assets/maturity-rubric.md",
+    "skills/research-code-audit-training/assets/learner-evidence-passport-template.md",
+    "skills/research-code-audit-training/assets/capstone-response-template.md",
+)
+
 HEADING_PATTERN = re.compile(r"^#{1,6}\s+(.+?)\s*$", re.MULTILINE)
 HTML_COMMENT_PATTERN = re.compile(r"<!--.*?(?:-->|\Z)", re.DOTALL)
 RAW_HTML_BLOCK_PATTERN = re.compile(
@@ -103,6 +165,8 @@ TOP_LEVEL_KEYS = {
     "validator_scope",
     "case_id",
     "case_revision",
+    "case_manifest",
+    "case_ref",
     "learner_label",
     "exposure_state",
     "created_at",
@@ -119,12 +183,16 @@ ATTEMPT_KEYS = {
     "note",
     "worksheet_sha256",
     "worksheet_snapshot",
+    "case_ref",
     "structure_assessment",
 }
 REVIEW_KEYS = {
     "id",
     "attempt_id",
     "attempt_sha256",
+    "attempt_ref",
+    "case_ref",
+    "packet_sha256",
     "reviewer",
     "created_at",
     "decision",
@@ -601,6 +669,40 @@ def _case_revision() -> str:
     )
 
 
+def _read_public_case_sources() -> dict[str, bytes]:
+    """Read only the explicitly named public learning inputs, without a scan."""
+
+    retained: dict[str, bytes] = {}
+    total = 0
+    for relative in CASE_SOURCE_PATHS:
+        bindings.artifact_ref(relative, b"")  # canonical path and isolation boundary
+        data = _read_workspace_bytes(
+            REPOSITORY_ROOT,
+            relative,
+            label=f"learner-visible case source {relative}",
+            maximum_bytes=MAX_WORKSHEET_BYTES,
+            allow_repository_root=True,
+        )
+        total += len(data)
+        if total > MAX_CASE_BYTES:
+            raise TrainingError("public case exceeds the local frozen-case safety limit")
+        retained[relative] = data
+    return retained
+
+
+def _build_case_manifest(retained: dict[str, bytes]) -> dict[str, object]:
+    try:
+        return bindings.build_case_manifest(
+            bindings.subject_ref(CASE_ID, "training-case"),
+            CASE_ID,
+            (bindings.artifact_ref(path, data) for path, data in retained.items()),
+            # HEAD is provenance only and may not describe dirty working-tree bytes.
+            source_revision_value=None,
+        )
+    except bindings.BindingError as error:
+        raise TrainingError(f"invalid public case identity: {error}") from error
+
+
 def _validate_case_revision(value: object, *, field: str) -> str:
     revision = _validate_text(value, field=field)
     if revision != UNAVAILABLE_CASE_REVISION and not GIT_REVISION.fullmatch(revision):
@@ -616,8 +718,10 @@ def _workspace_readme() -> str:
 
 This directory belongs to the learner. It is intentionally outside the RCSL source
 repository. Edit the Markdown files in `worksheets/`, then use the `train progress`
-commands to check structure, freeze attempts, record named human reviews, resume,
-and export a redacted summary.
+commands to check structure, freeze attempts, build a self-contained reviewer
+packet, record named human reviews, resume, and export a redacted summary.
+`case/` retains the exact learner-visible Open Demo inputs used for this workspace;
+the repository's `ANSWER_SHEET.md` examples are not a second submission path.
 
 Automatic checks assess structure only. They do not inspect instructor material,
 judge an answer, verify scientific correctness, authenticate a reviewer, or grant a
@@ -886,6 +990,10 @@ def initialize_workspace(output: Path | str, *, learner_label: str) -> dict[str,
     if os.path.lexists(workspace):
         raise TrainingError(f"output already exists; refusing to overwrite: {workspace}")
 
+    case_data = _read_public_case_sources()
+    case_manifest = _build_case_manifest(case_data)
+    case_reference = bindings.case_ref(case_manifest)
+
     sources = dict(RESOURCE_SOURCES)
     sources["learner-evidence-passport-template.md"] = PASSPORT_TEMPLATE
     sources["capstone-response-template.md"] = CAPSTONE_TEMPLATE
@@ -897,20 +1005,24 @@ def initialize_workspace(output: Path | str, *, learner_label: str) -> dict[str,
             relative_source = source.relative_to(REPOSITORY_ROOT).as_posix()
         except ValueError as error:
             raise TrainingError("public training source is outside the RCSL repository") from error
-        source_data[label] = _read_workspace_bytes(
-            REPOSITORY_ROOT,
-            relative_source,
-            label=f"public source asset {label}",
-            maximum_bytes=MAX_WORKSHEET_BYTES,
-            allow_repository_root=True,
-        )
+        try:
+            source_data[label] = case_data[relative_source]
+        except KeyError as error:
+            raise TrainingError(f"fixed public training source is outside case manifest: {label}") from error
 
     workspace.parent.mkdir(parents=True, exist_ok=True)
     workspace.mkdir(mode=0o700)
     try:
         worksheets = workspace / "worksheets"
         worksheets.mkdir(mode=0o700)
+        case_directory = workspace / "case"
+        case_directory.mkdir(mode=0o700)
         _write_new_file(workspace / "README.md", _workspace_readme().encode("utf-8"))
+
+        for relative, data in case_data.items():
+            destination = case_directory / relative
+            destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            _write_new_file(destination, data)
 
         resources: dict[str, str] = {}
         for destination_name in RESOURCE_SOURCES:
@@ -942,6 +1054,8 @@ def initialize_workspace(output: Path | str, *, learner_label: str) -> dict[str,
             "validator_scope": VALIDATOR_SCOPE,
             "case_id": CASE_ID,
             "case_revision": _case_revision(),
+            "case_manifest": case_manifest,
+            "case_ref": case_reference,
             "learner_label": learner,
             "exposure_state": EXPOSURE_STATE,
             "created_at": timestamp,
@@ -997,6 +1111,11 @@ def _validate_progress(
             workspace_descriptor, relative, label=label, maximum_bytes=maximum_bytes
         )
 
+    if type(progress.get("schema_version")) is int and progress["schema_version"] == 1:
+        raise TrainingError(
+            "legacy v1 training workspace is reference-only and cannot be retroactively "
+            "content-bound; keep its original checkout for reading and create a new v2 workspace"
+        )
     _expect_exact_keys(progress, TOP_LEVEL_KEYS, field="progress")
     if type(progress["schema_version"]) is not int or progress["schema_version"] != SCHEMA_VERSION:
         raise TrainingError(f"unsupported progress schema version: {progress['schema_version']!r}")
@@ -1007,6 +1126,33 @@ def _validate_progress(
     if progress["case_id"] != CASE_ID:
         raise TrainingError("training case ID has changed or is invalid")
     _validate_case_revision(progress["case_revision"], field="case revision")
+    try:
+        case_manifest = bindings.validate_case_manifest(progress["case_manifest"])
+        case_reference = bindings.validate_case_ref(progress["case_ref"])
+        if case_reference != bindings.case_ref(case_manifest):
+            raise TrainingError("case ref does not match the frozen case manifest")
+    except bindings.BindingError as error:
+        raise TrainingError(f"invalid frozen case binding: {error}") from error
+    if case_manifest["subject"] != bindings.subject_ref(CASE_ID, "training-case"):
+        raise TrainingError("frozen case has a different training subject")
+    if case_manifest["case_id"] != CASE_ID or case_manifest["source_revision"] is not None:
+        raise TrainingError("frozen case identity is invalid; Git HEAD is provenance only")
+    frozen_artifacts = {item["path"]: item for item in case_manifest["artifacts"]}
+    frozen_data: dict[str, bytes] = {}
+    total_case_bytes = 0
+    for item in case_manifest["artifacts"]:
+        relative = item["path"]
+        data = read_bytes(
+            f"case/{relative}",
+            label=f"frozen learner-visible case artifact {relative}",
+            maximum_bytes=MAX_WORKSHEET_BYTES,
+        )
+        total_case_bytes += len(data)
+        if total_case_bytes > MAX_CASE_BYTES:
+            raise TrainingError("frozen case exceeds the local safety limit")
+        if len(data) != item["size"] or _sha256_bytes(data) != item["sha256"]:
+            raise TrainingError(f"frozen case artifact digest mismatch: {relative}")
+        frozen_data[relative] = data
     _validate_label(progress["learner_label"], field="learner label")
     if progress["exposure_state"] != EXPOSURE_STATE:
         raise TrainingError("public training exposure state must remain honor isolation")
@@ -1025,6 +1171,9 @@ def _validate_progress(
         )
         if _sha256_bytes(data) != digest:
             raise TrainingError(f"fixed resource digest mismatch: {filename}")
+        source_path = RESOURCE_SOURCES[filename].relative_to(REPOSITORY_ROOT).as_posix()
+        if source_path not in frozen_artifacts or digest != frozen_artifacts[source_path]["sha256"]:
+            raise TrainingError(f"fixed resource is not the frozen case artifact: {filename}")
 
     targets = _expect_exact_keys(progress["targets"], set(TARGETS), field="targets")
     known_attempts: dict[str, set[str]] = {}
@@ -1072,6 +1221,8 @@ def _validate_progress(
                 raise TrainingError(f"{field} has an invalid worksheet snapshot or digest")
             if _sha256_text(snapshot) != digest:
                 raise TrainingError(f"{field} worksheet digest mismatch")
+            if attempt["case_ref"] != case_reference:
+                raise TrainingError(f"{field}.case_ref does not match the frozen case")
             if len(snapshot.encode("utf-8")) > MAX_WORKSHEET_BYTES:
                 raise TrainingError(f"{field} worksheet snapshot exceeds the local safety limit")
             _validate_assessment(attempt["structure_assessment"], target=target, snapshot=snapshot, field=f"{field}.structure_assessment")
@@ -1098,6 +1249,21 @@ def _validate_progress(
                 or review["attempt_sha256"] != attempt["worksheet_sha256"]
             ):
                 raise TrainingError(f"{field}.attempt_sha256 does not match the frozen attempt digest")
+            if review["case_ref"] != case_reference:
+                raise TrainingError(f"{field}.case_ref does not match the frozen case")
+            try:
+                expected_attempt_ref = _attempt_ref(attempt, case_reference)
+                if bindings.validate_record_ref(review["attempt_ref"]) != expected_attempt_ref:
+                    raise TrainingError(f"{field}.attempt_ref does not match the frozen attempt")
+            except bindings.BindingError as error:
+                raise TrainingError(f"{field}.attempt_ref is invalid: {error}") from error
+            if not isinstance(review["packet_sha256"], str) or not HEX_SHA256.fullmatch(review["packet_sha256"]):
+                raise TrainingError(f"{field}.packet_sha256 must be a SHA-256 digest")
+            expected_packet_sha = _packet_digest(
+                _review_packet_object(case_manifest, case_reference, target, attempt, frozen_data)
+            )
+            if review["packet_sha256"] != expected_packet_sha:
+                raise TrainingError(f"{field}.packet_sha256 does not match the frozen reviewer packet")
             _validate_label(review["reviewer"], field=f"{field}.reviewer")
             _validate_timestamp(review["created_at"], field=f"{field}.created_at")
             if review["decision"] not in REVIEW_DECISIONS:
@@ -1151,6 +1317,7 @@ def _validate_progress(
                 "target": operation["target"],
                 "note": attempt["note"],
                 "worksheet_sha256": attempt["worksheet_sha256"],
+                "case_ref": attempt["case_ref"],
             }
         else:
             review = review_records[(operation["target"], operation["result_id"])]
@@ -1159,6 +1326,9 @@ def _validate_progress(
                 "target": operation["target"],
                 "attempt_id": review["attempt_id"],
                 "attempt_sha256": review["attempt_sha256"],
+                "attempt_ref": review["attempt_ref"],
+                "case_ref": review["case_ref"],
+                "packet_sha256": review["packet_sha256"],
                 "reviewer": review["reviewer"],
                 "decision": review["decision"],
                 "ratings": review["ratings"],
@@ -1262,6 +1432,238 @@ def _find_result(progress: dict[str, object], operation: dict[str, object]) -> d
     raise TrainingError("operation result is missing from verified progress history")
 
 
+def _attempt_ref(attempt: dict[str, object], case_reference: dict[str, object]) -> dict[str, str]:
+    """Bind exact attempt JSON bytes without normalizing the learner's UTF-8 answer."""
+
+    try:
+        serialized = json.dumps(
+            attempt, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False,
+        ).encode("utf-8")
+        projection = {
+            "id": attempt["id"],
+            "case_ref": attempt["case_ref"],
+            "attempt_json_sha256": _sha256_bytes(serialized),
+        }
+        return bindings.record_ref("attempt", str(attempt["id"]), projection, case_reference)
+    except (bindings.BindingError, TypeError, ValueError, UnicodeError) as error:
+        raise TrainingError(f"could not content-bind frozen attempt: {error}") from error
+
+
+def _review_packet_object(
+    case_manifest: dict[str, object],
+    case_reference: dict[str, object],
+    target: str,
+    attempt: dict[str, object],
+    case_data: dict[str, bytes],
+) -> dict[str, object]:
+    """Create the self-contained private packet for one exact attempt."""
+
+    attempt_reference = _attempt_ref(attempt, case_reference)
+    return {
+        "schema_version": PACKET_SCHEMA_VERSION,
+        "packet_type": PACKET_TYPE,
+        "case_manifest": deepcopy(case_manifest),
+        "case_ref": deepcopy(case_reference),
+        "target": target,
+        "attempt": deepcopy(attempt),
+        "attempt_ref": attempt_reference,
+        "resource_aliases": deepcopy(PACKET_RESOURCE_ALIASES),
+        "artifacts": [
+            {
+                "path": item["path"],
+                "data_base64": base64.b64encode(case_data[item["path"]]).decode("ascii"),
+            }
+            for item in case_manifest["artifacts"]
+        ],
+    }
+
+
+def _packet_digest(packet: dict[str, object]) -> str:
+    try:
+        serialized = json.dumps(
+            packet, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, UnicodeError, RecursionError) as error:
+        raise TrainingError(f"reviewer packet cannot be encoded safely: {error}") from error
+    if len(serialized) > MAX_PACKET_BYTES:
+        raise TrainingError("reviewer packet exceeds the local safety limit")
+    return _sha256_bytes(serialized)
+
+
+def _frozen_case_data_from_descriptor(
+    case_manifest: dict[str, object], workspace_descriptor: int
+) -> dict[str, bytes]:
+    retained: dict[str, bytes] = {}
+    total = 0
+    for item in case_manifest["artifacts"]:
+        relative = item["path"]
+        data = _read_from_directory_fd(
+            workspace_descriptor,
+            f"case/{relative}",
+            label=f"frozen case artifact {relative}",
+            maximum_bytes=MAX_WORKSHEET_BYTES,
+        )
+        total += len(data)
+        if total > MAX_CASE_BYTES:
+            raise TrainingError("frozen case exceeds the local safety limit")
+        if len(data) != item["size"] or _sha256_bytes(data) != item["sha256"]:
+            raise TrainingError(f"frozen case artifact digest mismatch: {relative}")
+        retained[relative] = data
+    return retained
+
+
+def _selected_attempt(progress: dict[str, object], target: str, attempt_id: str) -> dict[str, object]:
+    if target not in TARGETS:
+        raise TrainingError(f"unknown training target: {target}")
+    attempts = progress["targets"][target]["attempts"]
+    if not attempts:
+        raise TrainingError(f"{target} has no submitted attempt")
+    selected_id = attempts[-1]["id"] if attempt_id == "latest" else attempt_id
+    selected = next((item for item in attempts if item["id"] == selected_id), None)
+    if selected is None:
+        raise TrainingError(f"unknown submitted attempt for {target}: {selected_id}")
+    return selected
+
+
+def _verified_packet_summary(packet: dict[str, object]) -> dict[str, str]:
+    _expect_exact_keys(
+        packet,
+        {"schema_version", "packet_type", "case_manifest", "case_ref", "target",
+         "attempt", "attempt_ref", "resource_aliases", "artifacts"},
+        field="reviewer packet",
+    )
+    if type(packet["schema_version"]) is not int or packet["schema_version"] != PACKET_SCHEMA_VERSION:
+        raise TrainingError("unsupported reviewer packet schema")
+    if packet["packet_type"] != PACKET_TYPE:
+        raise TrainingError("not an RCSL training reviewer packet")
+    try:
+        manifest = bindings.validate_case_manifest(packet["case_manifest"])
+        reference = bindings.validate_case_ref(packet["case_ref"])
+        if reference != bindings.case_ref(manifest):
+            raise TrainingError("reviewer packet case ref does not match manifest")
+        if manifest["subject"] != bindings.subject_ref(CASE_ID, "training-case") or manifest["case_id"] != CASE_ID:
+            raise TrainingError("reviewer packet does not contain the declared Open Demo case")
+        if manifest["source_revision"] is not None:
+            raise TrainingError("reviewer packet Git provenance must not replace content identity")
+    except bindings.BindingError as error:
+        raise TrainingError(f"invalid reviewer packet case binding: {error}") from error
+    if packet["resource_aliases"] != PACKET_RESOURCE_ALIASES:
+        raise TrainingError("reviewer packet resource aliases are invalid")
+    if not set(PACKET_RESOURCE_ALIASES.values()).issubset(
+        {item["path"] for item in manifest["artifacts"]}
+    ):
+        raise TrainingError("reviewer packet omits a fixed rubric or brief artifact")
+    target = packet["target"]
+    if target not in TARGETS:
+        raise TrainingError("reviewer packet has an unknown target")
+    attempt = _expect_exact_keys(packet["attempt"], ATTEMPT_KEYS, field="reviewer packet attempt")
+    if not isinstance(attempt["id"], str) or not re.fullmatch(rf"{target.upper()}-A[0-9]{{3}}", attempt["id"]):
+        raise TrainingError("reviewer packet attempt ID does not match target")
+    _validate_timestamp(attempt["created_at"], field="reviewer packet attempt.created_at")
+    if attempt["retry_of"] is not None:
+        _validate_id(attempt["retry_of"], field="reviewer packet attempt.retry_of")
+    _validate_text(attempt["note"], field="reviewer packet attempt.note", allow_empty=True)
+    snapshot = attempt["worksheet_snapshot"]
+    if not isinstance(snapshot, str) or len(snapshot.encode("utf-8")) > MAX_WORKSHEET_BYTES:
+        raise TrainingError("reviewer packet worksheet snapshot is invalid or too large")
+    if attempt["worksheet_sha256"] != _sha256_text(snapshot):
+        raise TrainingError("reviewer packet worksheet digest mismatch")
+    if attempt["case_ref"] != reference:
+        raise TrainingError("reviewer packet attempt is bound to another case")
+    _validate_assessment(
+        attempt["structure_assessment"], target=target, snapshot=snapshot,
+        field="reviewer packet attempt.structure_assessment",
+    )
+    if attempt["structure_assessment"]["structure_status"] != "complete":
+        raise TrainingError("reviewer packet attempt was not structurally complete")
+    try:
+        if bindings.validate_record_ref(packet["attempt_ref"]) != _attempt_ref(attempt, reference):
+            raise TrainingError("reviewer packet attempt ref mismatch")
+    except bindings.BindingError as error:
+        raise TrainingError(f"reviewer packet attempt ref mismatch: {error}") from error
+    raw_artifacts = packet["artifacts"]
+    if not isinstance(raw_artifacts, list) or len(raw_artifacts) != len(manifest["artifacts"]):
+        raise TrainingError("reviewer packet artifacts do not cover the frozen case")
+    total = 0
+    for index, (raw, item) in enumerate(zip(raw_artifacts, manifest["artifacts"])):
+        artifact = _expect_exact_keys(raw, {"path", "data_base64"}, field=f"packet artifact[{index}]")
+        if artifact["path"] != item["path"] or not isinstance(artifact["data_base64"], str):
+            raise TrainingError("reviewer packet artifact path or encoding is invalid")
+        try:
+            data = base64.b64decode(artifact["data_base64"], validate=True)
+        except (ValueError, binascii.Error) as error:
+            raise TrainingError("reviewer packet artifact is not canonical base64") from error
+        if base64.b64encode(data).decode("ascii") != artifact["data_base64"]:
+            raise TrainingError("reviewer packet artifact base64 is not canonical")
+        total += len(data)
+        if total > MAX_CASE_BYTES or len(data) != item["size"] or _sha256_bytes(data) != item["sha256"]:
+            raise TrainingError(f"reviewer packet artifact digest mismatch: {item['path']}")
+    return {
+        "attempt_id": str(attempt["id"]),
+        "case_sha256": reference["case_sha256"],
+        "packet_sha256": _packet_digest(packet),
+    }
+
+
+def build_review_packet(
+    workspace_value: Path | str,
+    target: str,
+    output_value: Path | str,
+    *,
+    attempt_id: str = "latest",
+) -> dict[str, str]:
+    """Create a self-contained, non-redacted packet for independent human review."""
+
+    workspace = _validate_workspace_location(workspace_value, creating=False)
+    output = _normalized_path(output_value)
+    if _has_isolated_component(output):
+        raise TrainingError("reviewer packet output must be inside the safe training workspace")
+    try:
+        relative_path = output.relative_to(workspace)
+    except ValueError as error:
+        raise TrainingError("reviewer packet output must be inside the safe training workspace") from error
+    if not relative_path.parts:
+        raise TrainingError("reviewer packet output must be inside the safe training workspace")
+    relative = relative_path.as_posix()
+    _validate_relative_file_path(relative, label="reviewer packet output")
+    if output.name.casefold() in {PROGRESS_FILENAME.casefold(), LOCK_FILENAME.casefold(), "readme.md", "rubric.md", "capstone_brief.md"}:
+        raise TrainingError("reviewer packet must not overwrite a reserved workspace file")
+    with _exclusive_lock(workspace) as workspace_descriptor:
+        progress = _load_progress_from_descriptor(workspace, workspace_descriptor)
+        attempt = _selected_attempt(progress, target, attempt_id)
+        retained = _frozen_case_data_from_descriptor(progress["case_manifest"], workspace_descriptor)
+        packet = _review_packet_object(
+            progress["case_manifest"], progress["case_ref"], target, attempt, retained
+        )
+        summary = _verified_packet_summary(packet)
+        content = (json.dumps(packet, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
+        if len(content) > MAX_PACKET_BYTES:
+            raise TrainingError("reviewer packet exceeds the local safety limit")
+        _write_new_file_from_directory_fd(
+            workspace_descriptor, relative, content, label=f"reviewer packet {relative}"
+        )
+        return {"path": str(output), **summary}
+
+
+def verify_review_packet(packet_value: Path | str) -> dict[str, str]:
+    """Verify one standalone packet's exact retained bytes without a repository."""
+
+    path = _normalized_path(packet_value)
+    if _has_isolated_component(path) or _has_isolated_component(_resolved_without_reading_target(path)):
+        raise TrainingError("refusing an isolated reviewer packet path")
+    data = _read_workspace_bytes(
+        path.parent, path.name, label="standalone reviewer packet",
+        maximum_bytes=MAX_PACKET_BYTES, allow_repository_root=True,
+    )
+    try:
+        packet = _strict_json_loads(data.decode("utf-8"))
+    except UnicodeDecodeError as error:
+        raise TrainingError("reviewer packet must be valid UTF-8 JSON") from error
+    return {"path": str(path), **_verified_packet_summary(packet)}
+
+
 def submit_attempt(
     workspace_value: Path | str,
     target: str,
@@ -1294,6 +1696,7 @@ def submit_attempt(
                 "target": target,
                 "note": normalized_note,
                 "worksheet_sha256": _sha256_text(snapshot),
+                "case_ref": progress["case_ref"],
             }
         )
         existing = _existing_operation(progress, operation, payload_sha256)
@@ -1310,6 +1713,7 @@ def submit_attempt(
             "note": normalized_note,
             "worksheet_sha256": _sha256_text(snapshot),
             "worksheet_snapshot": snapshot,
+            "case_ref": deepcopy(progress["case_ref"]),
             "structure_assessment": assessment,
         }
         attempts.append(attempt)
@@ -1350,6 +1754,7 @@ def record_review(
     rationale: str,
     strengths: str,
     gaps: str,
+    packet_sha256: str,
     attempt_id: str = "latest",
     operation_id: str | None = None,
 ) -> dict[str, object]:
@@ -1366,6 +1771,8 @@ def record_review(
     rationale_text = _validate_text(rationale, field="review rationale")
     strengths_text = _validate_text(strengths, field="review strengths")
     gaps_text = _validate_text(gaps, field="review gaps")
+    if not isinstance(packet_sha256, str) or not HEX_SHA256.fullmatch(packet_sha256):
+        raise TrainingError("reviewer packet SHA-256 must be a lowercase digest")
     operation = _validate_id(operation_id or f"op-{uuid.uuid4().hex}", field="operation ID")
 
     with _exclusive_lock(workspace) as workspace_descriptor:
@@ -1373,13 +1780,17 @@ def record_review(
         if target not in TARGETS:
             raise TrainingError(f"unknown training target: {target}")
         target_record = progress["targets"][target]
-        attempts = target_record["attempts"]
-        if not attempts:
-            raise TrainingError(f"{target} has no submitted attempt to review")
-        selected_id = attempts[-1]["id"] if attempt_id == "latest" else attempt_id
-        selected = next((item for item in attempts if item["id"] == selected_id), None)
-        if selected is None:
-            raise TrainingError(f"unknown submitted attempt for {target}: {selected_id}")
+        selected = _selected_attempt(progress, target, attempt_id)
+        selected_id = selected["id"]
+        retained = _frozen_case_data_from_descriptor(progress["case_manifest"], workspace_descriptor)
+        expected_packet_sha256 = _packet_digest(
+            _review_packet_object(
+                progress["case_manifest"], progress["case_ref"], target, selected, retained
+            )
+        )
+        if packet_sha256 != expected_packet_sha256:
+            raise TrainingError("declared reviewer packet digest does not match the selected frozen attempt and case")
+        selected_ref = _attempt_ref(selected, progress["case_ref"])
 
         payload_sha256 = _payload_digest(
             {
@@ -1387,6 +1798,9 @@ def record_review(
                 "target": target,
                 "attempt_id": selected_id,
                 "attempt_sha256": selected["worksheet_sha256"],
+                "attempt_ref": selected_ref,
+                "case_ref": progress["case_ref"],
+                "packet_sha256": packet_sha256,
                 "reviewer": reviewer_label,
                 "decision": decision,
                 "ratings": ratings,
@@ -1405,6 +1819,9 @@ def record_review(
             "id": review_id,
             "attempt_id": selected_id,
             "attempt_sha256": selected["worksheet_sha256"],
+            "attempt_ref": selected_ref,
+            "case_ref": deepcopy(progress["case_ref"]),
+            "packet_sha256": packet_sha256,
             "reviewer": reviewer_label,
             "created_at": _utc_now(),
             "decision": decision,
@@ -1501,6 +1918,7 @@ def _status_from_descriptor(
                 "reviewer": review["reviewer"],
                 "decision": review["decision"],
                 "ratings": deepcopy(review["ratings"]),
+                "packet_sha256": review["packet_sha256"],
                 "gaps": review["gaps"],
             }
             for review in active
@@ -1543,6 +1961,7 @@ def _status_from_descriptor(
         "workspace_type": WORKSPACE_TYPE,
         "case_id": progress["case_id"],
         "case_revision": progress["case_revision"],
+        "case_sha256": progress["case_ref"]["case_sha256"],
         "exposure_state": progress["exposure_state"],
         "validator_scope": progress["validator_scope"],
         "overall_state": overall_state,
@@ -1622,6 +2041,7 @@ def _render_markdown(status: dict[str, object]) -> str:
         "",
         f"- Case: `{_safe_markdown(status['case_id'])}`",
         f"- Case revision: `{_safe_markdown(status['case_revision'])}`",
+        f"- Frozen case digest: `{_safe_markdown(status['case_sha256'])}`",
         f"- Exposure: `{_safe_markdown(status['exposure_state'])}`",
         f"- Overall state: `{_safe_markdown(status['overall_state'])}`",
         f"- Scientific correctness: `{_safe_markdown(status['scientific_correctness'])}`",
@@ -1688,9 +2108,12 @@ def export_progress(
     output = _normalized_path(output_value)
     if _has_isolated_component(output):
         raise TrainingError("refusing to export into isolated instructor material")
-    if not _is_within(output, workspace) or len(output.parts) <= len(workspace.parts):
+    try:
+        relative_output = output.relative_to(workspace)
+    except ValueError as error:
+        raise TrainingError("progress export must remain inside the training workspace") from error
+    if not relative_output.parts:
         raise TrainingError("progress export must remain inside the training workspace")
-    relative_output = Path(*output.parts[len(workspace.parts) :])
     _validate_relative_file_path(relative_output.as_posix(), label="progress export")
     if output.name.casefold() in {
         PROGRESS_FILENAME.casefold(),

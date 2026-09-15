@@ -1,0 +1,6 @@
+approval_id,decision_at_utc,decision,approved_scope,max_gpu_minutes,owner_label,notes
+A-01,2026-09-08T08:30:00Z,approved,baseline:R-042,30,Owner-1,public validation baseline
+A-02,2026-09-09T08:00:00Z,approved,refactor-and-cache-refresh,0,Owner-1,code and cache preparation only
+A-03,2026-09-09T08:40:00Z,approved,rerun:R-043,30,Owner-1,public validation rerun
+A-04,2026-09-09T09:55:00Z,approved,diagnostic-rerun:R-044,50,Owner-1,diagnostic envelope; linkage to each action must be checked
+A-05,2026-09-09T11:15:00Z,approved,draft-only:CL-07,0,Owner-1,no publication or release approval

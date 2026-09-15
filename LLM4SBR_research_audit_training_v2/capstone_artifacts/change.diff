@@ -1,0 +1,15 @@
+diff --git a/illustrative/numerical_helper.py b/illustrative/numerical_helper.py
+--- a/illustrative/numerical_helper.py
++++ b/illustrative/numerical_helper.py
+@@ -42,3 +42,3 @@ def valid_mean(scores, valid):
+     denominator = valid.sum(dim=-1).clamp_min(1)
+-    numerator = (scores * valid.to(scores.dtype)).sum(dim=-1)
++    numerator = torch.where(valid, scores, torch.zeros_like(scores)).sum(dim=-1)
+     return numerator / denominator
+diff --git a/illustrative/cache_reader.py b/illustrative/cache_reader.py
+--- a/illustrative/cache_reader.py
++++ b/illustrative/cache_reader.py
+@@ -95,2 +95,2 @@ def load_batch(cache, requested_ids, cache_order):
+-    feature_rows = cache.lookup(requested_ids)
++    feature_rows = cache.lookup(cache_order)
+     return feature_rows

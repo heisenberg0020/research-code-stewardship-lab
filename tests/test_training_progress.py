@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import base64
 import os
 from pathlib import Path
 import re
@@ -14,6 +16,7 @@ from unittest import mock
 
 from stewardship_lab.training import (
     TrainingError,
+    build_review_packet,
     check_worksheet,
     export_progress,
     get_redacted_status,
@@ -22,6 +25,7 @@ from stewardship_lab.training import (
     load_progress,
     record_review,
     submit_attempt,
+    verify_review_packet,
 )
 
 
@@ -76,6 +80,7 @@ class TrainingProgressTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.workspace = self.root / "learner-progress"
         initialize_workspace(self.workspace, learner_label="Local Learner")
+        self.packet_count = 0
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -95,6 +100,17 @@ class TrainingProgressTests(unittest.TestCase):
             operation_id=operation_id,
         )
 
+    def packet(self, target: str, *, attempt_id: str = "latest") -> tuple[Path, dict[str, object]]:
+        self.packet_count += 1
+        output = self.workspace / f"review-packet-{self.packet_count:03d}.json"
+        built = build_review_packet(
+            self.workspace, target, output, attempt_id=attempt_id
+        )
+        verified = verify_review_packet(output)
+        self.assertEqual(built["packet_sha256"], verified["packet_sha256"])
+        self.assertEqual(built["attempt_id"], verified["attempt_id"])
+        return output, built
+
     def review(
         self,
         target: str,
@@ -104,6 +120,7 @@ class TrainingProgressTests(unittest.TestCase):
         ratings: dict[str, str] | None = None,
         operation_id: str | None = None,
     ) -> dict[str, object]:
+        _, packet = self.packet(target)
         return record_review(
             self.workspace,
             target,
@@ -113,13 +130,14 @@ class TrainingProgressTests(unittest.TestCase):
             rationale="Evidence-bound human judgment for this frozen attempt.",
             strengths="The first contract and a reproducible check are explicit.",
             gaps="Residual uncertainty is recorded rather than averaged away.",
+            packet_sha256=packet["packet_sha256"],
             operation_id=operation_id,
         )
 
     def test_init_is_external_minimal_and_offline_resumable(self) -> None:
         self.assertEqual(
             {path.name for path in self.workspace.iterdir()},
-            {"README.md", "RUBRIC.md", "CAPSTONE_BRIEF.md", "progress.json", "worksheets"},
+            {"README.md", "RUBRIC.md", "CAPSTONE_BRIEF.md", "progress.json", "worksheets", "case"},
         )
         self.assertEqual({path.name for path in (self.workspace / "worksheets").iterdir()}, {
             "L1.md", "L2.md", "L3.md", "L4.md", "capstone.md"
@@ -128,6 +146,9 @@ class TrainingProgressTests(unittest.TestCase):
         self.assertEqual(progress["workspace_type"], "rcsl-training-progress")
         self.assertEqual(progress["exposure_state"], "open-demo-honor-isolation")
         self.assertEqual(set(progress["targets"]), set(TARGETS))
+        self.assertEqual(progress["schema_version"], 2)
+        self.assertRegex(progress["case_ref"]["case_sha256"], r"^[0-9a-f]{64}$")
+        self.assertGreater(len(progress["case_manifest"]["artifacts"]), 20)
         self.assertEqual(oct((self.workspace / "progress.json").stat().st_mode & 0o777), "0o600")
         assert_no_answer_fields(self, progress)
 
@@ -230,6 +251,7 @@ class TrainingProgressTests(unittest.TestCase):
 
     def test_submit_freezes_bytes_retry_and_idempotent_operation(self) -> None:
         first = self.submit("L1", operation_id="submit-l1-first")
+        self.assertEqual(first["case_ref"], load_progress(self.workspace)["case_ref"])
         replay = submit_attempt(
             self.workspace,
             "L1",
@@ -255,6 +277,7 @@ class TrainingProgressTests(unittest.TestCase):
         stored = load_progress(self.workspace)["targets"]["L1"]["attempts"]
         self.assertEqual([attempt["id"] for attempt in stored], [first["id"], second["id"]])
         self.assertEqual(stored[0]["worksheet_snapshot"], old_snapshot)
+        self.assertEqual(stored[0]["case_ref"], stored[1]["case_ref"])
 
         with self.assertRaisesRegex(TrainingError, "operation ID"):
             submit_attempt(
@@ -262,6 +285,155 @@ class TrainingProgressTests(unittest.TestCase):
                 "L1",
                 note="Different payload",
                 operation_id="submit-l1-first",
+            )
+
+    def test_case_manifest_covers_exact_retained_public_bytes_and_tampering_fails_closed(self) -> None:
+        progress = load_progress(self.workspace)
+        artifacts = progress["case_manifest"]["artifacts"]
+        self.assertEqual(len(artifacts), len({item["path"] for item in artifacts}))
+        self.assertEqual(progress["case_manifest"]["source_revision"], None)
+        for artifact in artifacts:
+            relative = artifact["path"]
+            self.assertNotIn("DO_NOT_OPEN_UNTIL_FINISHED", relative.upper().split("/"))
+            retained = (self.workspace / "case" / relative).read_bytes()
+            self.assertEqual(artifact["sha256"], hashlib.sha256(retained).hexdigest())
+            self.assertEqual(artifact["size"], len(retained))
+
+        self.submit("L1")
+        _, packet = self.packet("L1")
+        known_public = self.workspace / "case" / "LLM4SBR_research_audit_training_v2" / "CASE_FILE.md"
+        known_public.write_bytes(known_public.read_bytes() + b"\nchanged after freezing\n")
+        with self.assertRaisesRegex(TrainingError, "case|digest"):
+            load_progress(self.workspace)
+        with self.assertRaisesRegex(TrainingError, "case|digest"):
+            submit_attempt(self.workspace, "L1", note="Must not use changed case")
+        with self.assertRaisesRegex(TrainingError, "case|digest"):
+            record_review(
+                self.workspace, "L1", reviewer="Reviewer", decision="revise",
+                ratings=RATINGS, rationale="Human judgment", strengths="Evidence",
+                gaps="Open questions", packet_sha256=packet["packet_sha256"],
+            )
+
+    def test_old_progress_schema_is_explicitly_rejected(self) -> None:
+        progress_path = self.workspace / "progress.json"
+        legacy = json.loads(progress_path.read_text(encoding="utf-8"))
+        legacy["schema_version"] = 1
+        progress_path.write_text(json.dumps(legacy), encoding="utf-8")
+        with self.assertRaisesRegex(TrainingError, "legacy v1"):
+            load_progress(self.workspace)
+
+    def test_reviewer_packet_is_standalone_and_contains_exact_frozen_materials(self) -> None:
+        first = self.submit("L1")
+        output, summary = self.packet("L1", attempt_id=first["id"])
+        packet = json.loads(output.read_text(encoding="utf-8"))
+        progress = load_progress(self.workspace)
+        self.assertEqual(oct(output.stat().st_mode & 0o777), "0o600")
+        assert_no_answer_fields(self, packet)
+        self.assertEqual(packet["target"], "L1")
+        self.assertEqual(packet["case_ref"], progress["case_ref"])
+        self.assertEqual(packet["case_manifest"], progress["case_manifest"])
+        self.assertEqual(packet["attempt"], first)
+        self.assertEqual(
+            packet["resource_aliases"]["RUBRIC.md"],
+            "skills/research-code-audit-training/assets/maturity-rubric.md",
+        )
+        self.assertEqual(packet["attempt_ref"]["record_id"], first["id"])
+        self.assertEqual(packet["attempt_ref"]["case_sha256"], progress["case_ref"]["case_sha256"])
+        self.assertRegex(packet["attempt_ref"]["record_sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(summary["attempt_id"], first["id"])
+        self.assertEqual(summary["case_sha256"], progress["case_ref"]["case_sha256"])
+        by_path = {item["path"]: item for item in packet["artifacts"]}
+        self.assertEqual(set(by_path), {item["path"] for item in progress["case_manifest"]["artifacts"]})
+        for artifact in progress["case_manifest"]["artifacts"]:
+            retained = base64.b64decode(by_path[artifact["path"]]["data_base64"], validate=True)
+            self.assertEqual(hashlib.sha256(retained).hexdigest(), artifact["sha256"])
+            self.assertEqual(retained, (self.workspace / "case" / artifact["path"]).read_bytes())
+
+        standalone = self.root / "independent-review-packet.json"
+        standalone.write_bytes(output.read_bytes())
+        self.assertEqual(
+            verify_review_packet(standalone)["packet_sha256"],
+            summary["packet_sha256"],
+        )
+        self.worksheet("L1").write_text(
+            self.worksheet("L1").read_text(encoding="utf-8") + "\nUnsubmitted draft change.\n",
+            encoding="utf-8",
+        )
+        _, same_attempt_packet = self.packet("L1", attempt_id=first["id"])
+        self.assertEqual(same_attempt_packet["packet_sha256"], summary["packet_sha256"])
+        with self.assertRaisesRegex(TrainingError, "overwrite"):
+            build_review_packet(self.workspace, "L1", output, attempt_id=first["id"])
+
+        altered = json.loads(standalone.read_text(encoding="utf-8"))
+        altered["artifacts"][0]["data_base64"] = base64.b64encode(b"not the retained case").decode("ascii")
+        standalone.write_text(json.dumps(altered), encoding="utf-8")
+        with self.assertRaisesRegex(TrainingError, "digest|artifact|packet"):
+            verify_review_packet(standalone)
+
+        outside_output = self.root / "unexpected-packet.json"
+        with self.assertRaisesRegex(TrainingError, "inside"):
+            build_review_packet(self.workspace, "L1", outside_output)
+        self.assertFalse(outside_output.exists())
+
+        wrong_casing = self.root / "LEARNER-PROGRESS" / "wrong-case-packet.json"
+        with self.assertRaisesRegex(TrainingError, "inside"):
+            build_review_packet(self.workspace, "L1", wrong_casing)
+        self.assertFalse(wrong_casing.exists())
+
+    def test_non_nfc_utf8_answer_and_note_remain_exactly_reviewable(self) -> None:
+        decomposed = "e\u0301"
+        self.complete("L1", marker=f"Evidence {decomposed}")
+        attempt = submit_attempt(self.workspace, "L1", note=f"Cafe{decomposed}")
+        self.assertIn(decomposed, attempt["worksheet_snapshot"])
+        packet_path, summary = self.packet("L1", attempt_id=attempt["id"])
+        verified = verify_review_packet(packet_path)
+        self.assertEqual(verified["packet_sha256"], summary["packet_sha256"])
+        review = record_review(
+            self.workspace, "L1", reviewer="Independent Reviewer", decision="revise",
+            ratings=RATINGS, rationale="Human evidence judgment", strengths="Causal evidence",
+            gaps="Additional recomputation", packet_sha256=summary["packet_sha256"],
+        )
+        self.assertEqual(review["attempt_ref"], json.loads(packet_path.read_text(encoding="utf-8"))["attempt_ref"])
+
+    def test_frozen_case_symlink_is_rejected_without_reading_outside_bytes(self) -> None:
+        known_public = self.workspace / "case" / "LLM4SBR_research_audit_training_v2" / "CASE_FILE.md"
+        outside = self.root / "outside-case-sentinel.md"
+        secret = "OUTSIDE-CASE-SENTINEL-MUST-NOT-BE-READ"
+        outside.write_text(secret, encoding="utf-8")
+        known_public.unlink()
+        known_public.symlink_to(outside)
+        with self.assertRaisesRegex(TrainingError, "symlink|regular file"):
+            load_progress(self.workspace)
+        self.assertNotIn(secret, (self.workspace / "progress.json").read_text(encoding="utf-8"))
+
+    def test_review_requires_exact_packet_receipt_and_retry_rejects_old_packet(self) -> None:
+        first = self.submit("L1")
+        _, first_packet = self.packet("L1", attempt_id=first["id"])
+        with self.assertRaisesRegex(TrainingError, "packet"):
+            record_review(
+                self.workspace, "L1", reviewer="Reviewer", decision="revise",
+                ratings=RATINGS, rationale="Human judgment", strengths="Evidence",
+                gaps="Open questions", packet_sha256="0" * 64,
+            )
+        reviewed = record_review(
+            self.workspace, "L1", reviewer="Reviewer", decision="revise",
+            ratings=RATINGS, rationale="Human judgment", strengths="Evidence",
+            gaps="Open questions", packet_sha256=first_packet["packet_sha256"],
+        )
+        self.assertEqual(reviewed["case_ref"], first["case_ref"])
+        self.assertEqual(reviewed["packet_sha256"], first_packet["packet_sha256"])
+
+        self.worksheet("L1").write_text(
+            self.worksheet("L1").read_text(encoding="utf-8") + "\nNew frozen response.\n",
+            encoding="utf-8",
+        )
+        second = submit_attempt(self.workspace, "L1", note="Revised response")
+        self.assertNotEqual(first["worksheet_sha256"], second["worksheet_sha256"])
+        with self.assertRaisesRegex(TrainingError, "packet"):
+            record_review(
+                self.workspace, "L1", reviewer="Reviewer", decision="revise",
+                ratings=RATINGS, rationale="Human judgment", strengths="Evidence",
+                gaps="Open questions", packet_sha256=first_packet["packet_sha256"],
             )
 
     def test_review_is_human_only_preserves_disagreement_and_retry_resets_active_state(self) -> None:
@@ -320,6 +492,7 @@ class TrainingProgressTests(unittest.TestCase):
         self.assertEqual(replay["id"], first["id"])
 
         with self.assertRaisesRegex(TrainingError, "operation ID"):
+            _, packet = self.packet("L1")
             record_review(
                 self.workspace,
                 "L1",
@@ -329,6 +502,7 @@ class TrainingProgressTests(unittest.TestCase):
                 rationale="A different payload must not reuse the operation ID.",
                 strengths="Frozen evidence still exists.",
                 gaps="More independent evidence is now requested.",
+                packet_sha256=packet["packet_sha256"],
                 operation_id="review-l1-a",
             )
 
@@ -400,12 +574,12 @@ class TrainingProgressTests(unittest.TestCase):
             load_progress(self.workspace)
 
         progress_path.write_text(original, encoding="utf-8")
-        duplicate = original.replace('"schema_version": 1,', '"schema_version": 1, "schema_version": 1,', 1)
+        duplicate = original.replace('"schema_version": 2,', '"schema_version": 2, "schema_version": 2,', 1)
         progress_path.write_text(duplicate, encoding="utf-8")
         with self.assertRaisesRegex(TrainingError, "duplicate JSON key"):
             load_progress(self.workspace)
 
-        progress_path.write_text(original.replace('"schema_version": 1', '"schema_version": NaN', 1), encoding="utf-8")
+        progress_path.write_text(original.replace('"schema_version": 2', '"schema_version": NaN', 1), encoding="utf-8")
         with self.assertRaisesRegex(TrainingError, "non-finite JSON"):
             load_progress(self.workspace)
 
@@ -459,7 +633,7 @@ class TrainingProgressTests(unittest.TestCase):
         changed_attempt = json.loads(original)
         changed_attempt["targets"]["L1"]["attempts"][0]["note"] = "rewritten note"
         progress_path.write_text(json.dumps(changed_attempt), encoding="utf-8")
-        with self.assertRaisesRegex(TrainingError, "payload_sha256"):
+        with self.assertRaisesRegex(TrainingError, "attempt_ref|payload_sha256"):
             load_progress(self.workspace)
 
         missing_operation = json.loads(original)
@@ -638,6 +812,7 @@ class TrainingProgressTests(unittest.TestCase):
 
     def test_export_is_redacted_non_overwriting_and_inside_workspace(self) -> None:
         self.submit("L1")
+        _, packet = self.packet("L1")
         record_review(
             self.workspace,
             "L1",
@@ -647,6 +822,7 @@ class TrainingProgressTests(unittest.TestCase):
             rationale="# Fake pass\n![tracker](https://example.invalid/x)",
             strengths="Bounded evidence",
             gaps="Local Learner, Reviewer <script>, private@example.invalid: unknown claim impact",
+            packet_sha256=packet["packet_sha256"],
         )
         output = self.workspace / "progress-report.md"
         export_progress(self.workspace, output, format_name="markdown")
@@ -739,6 +915,36 @@ class TrainingProgressTests(unittest.TestCase):
         self.assertEqual(status["targets"]["L1"]["attempt_state"], "submitted")
         self.assertEqual(status["targets"]["L1"]["human_review_state"], "awaiting-human-review")
         assert_no_answer_fields(self, status)
+
+        packet_path = cli_workspace / "cli-review-packet.json"
+        built = run_cli(
+            "train", "progress", "packet", "build", str(cli_workspace),
+            "--target", "L1", "--output", str(packet_path),
+        )
+        self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+        packet_summary = verify_review_packet(packet_path)
+        verified = run_cli("train", "progress", "packet", "verify", str(packet_path))
+        self.assertEqual(verified.returncode, 0, verified.stdout + verified.stderr)
+
+        review_flags = (
+            "--target", "L1", "--reviewer", "CLI Reviewer", "--decision", "revise",
+            "--recognize", "demonstrated", "--prove", "demonstrated",
+            "--direct", "not-observed", "--steward", "not-observed",
+            "--rationale", "Independent judgment from exact packet",
+            "--strengths", "A first-break claim is visible",
+            "--gaps", "More causal evidence is needed",
+        )
+        missing_receipt = run_cli("train", "progress", "review", str(cli_workspace), *review_flags)
+        self.assertEqual(missing_receipt.returncode, 2, missing_receipt.stdout + missing_receipt.stderr)
+        reviewed = run_cli(
+            "train", "progress", "review", str(cli_workspace), *review_flags,
+            "--packet-sha256", packet_summary["packet_sha256"],
+        )
+        self.assertEqual(reviewed.returncode, 0, reviewed.stdout + reviewed.stderr)
+        self.assertEqual(
+            get_status(cli_workspace)["targets"]["L1"]["human_review_state"],
+            "needs-revision",
+        )
 
 
 if __name__ == "__main__":

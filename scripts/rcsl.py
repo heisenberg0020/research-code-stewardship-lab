@@ -1172,6 +1172,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--operation-id", help="Stable retry ID for exactly-once local mutation semantics."
     )
 
+    progress_packet = progress_commands.add_parser(
+        "packet", help="Build or verify a non-redacted packet for one frozen attempt."
+    )
+    packet_commands = progress_packet.add_subparsers(
+        dest="packet_command", required=True
+    )
+    packet_build = packet_commands.add_parser(
+        "build", help="Retain the exact frozen answer and public case bytes for human review."
+    )
+    packet_build.add_argument("workspace", type=Path)
+    packet_build.add_argument("--target", choices=training_core.TARGETS, required=True)
+    packet_build.add_argument("--attempt", default="latest")
+    packet_build.add_argument(
+        "--output", type=Path, required=True,
+        help="New JSON file inside the training workspace; never a redacted export.",
+    )
+    packet_verify = packet_commands.add_parser(
+        "verify", help="Check a standalone packet's retained bytes and binding."
+    )
+    packet_verify.add_argument("packet", type=Path)
+
     progress_review = progress_commands.add_parser(
         "review", help="Append one named human review bound to a frozen attempt."
     )
@@ -1187,6 +1208,10 @@ def build_parser() -> argparse.ArgumentParser:
     progress_review.add_argument("--rationale", required=True)
     progress_review.add_argument("--strengths", required=True)
     progress_review.add_argument("--gaps", required=True)
+    progress_review.add_argument(
+        "--packet-sha256", required=True,
+        help="Digest printed by packet verify for this exact attempt and case.",
+    )
     progress_review.add_argument("--operation-id")
 
     progress_export = progress_commands.add_parser(
@@ -1461,8 +1486,9 @@ def _dispatch_train(args: argparse.Namespace) -> int:
         return command_validate()
     if args.train_command == "progress":
         if args.progress_command == "init":
-            training_core.initialize_workspace(args.output, learner_label=args.learner)
+            progress = training_core.initialize_workspace(args.output, learner_label=args.learner)
             print(f"Training workspace CREATED: {args.output}")
+            print(f"Frozen learner-visible case: {progress['case_ref']['case_sha256']}")
             print("Edit worksheets/*.md, then run train progress check and submit.")
             print("Automatic checks are structural only; this public case is not a verified blind challenge.")
             return 0
@@ -1473,6 +1499,7 @@ def _dispatch_train(args: argparse.Namespace) -> int:
             else:
                 print(f"Overall state: {status['overall_state']}")
                 print(f"Exposure state: {status['exposure_state']}")
+                print(f"Frozen learner-visible case: {status['case_sha256']}")
                 for target, record in status["targets"].items():
                     print(
                         f"{target}: attempt={record['attempt_state']}; "
@@ -1507,6 +1534,22 @@ def _dispatch_train(args: argparse.Namespace) -> int:
             print("State: AWAITING HUMAN REVIEW")
             print("This submission has structural completeness only, not a correctness verdict.")
             return 0
+        if args.progress_command == "packet":
+            if args.packet_command == "build":
+                packet = training_core.build_review_packet(
+                    args.workspace, args.target, args.output, attempt_id=args.attempt
+                )
+                print(f"Reviewer packet CREATED: {packet['path']}")
+            elif args.packet_command == "verify":
+                packet = training_core.verify_review_packet(args.packet)
+                print(f"Reviewer packet VERIFIED: {packet['path']}")
+            else:
+                raise AssertionError(f"Unhandled training packet command: {args.packet_command}")
+            print(f"Frozen attempt: {packet['attempt_id']}")
+            print(f"Frozen learner-visible case: {packet['case_sha256']}")
+            print(f"Packet SHA-256: {packet['packet_sha256']}")
+            print("The packet is non-redacted. Byte consistency does not certify source origin, boundary completeness, answer correctness, or identity.")
+            return 0
         if args.progress_command == "review":
             review = training_core.record_review(
                 args.workspace,
@@ -1523,10 +1566,12 @@ def _dispatch_train(args: argparse.Namespace) -> int:
                 rationale=args.rationale,
                 strengths=args.strengths,
                 gaps=args.gaps,
+                packet_sha256=args.packet_sha256,
                 operation_id=args.operation_id,
             )
             print(f"Human review RECORDED: {review['id']} for {review['attempt_id']}")
             print(f"Declared decision: {review['decision']}")
+            print(f"Bound packet SHA-256: {review['packet_sha256']}")
             print("The CLI validated record consistency; it did not generate or verify the judgment.")
             return 0
         if args.progress_command == "export":
