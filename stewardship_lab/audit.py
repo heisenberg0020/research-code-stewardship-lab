@@ -25,7 +25,7 @@ import threading
 import uuid
 
 from . import audit_evidence as _audit_evidence
-from .bindings import BindingError, case_ref, subject_ref, validate_case_ref
+from .bindings import BindingError, artifact_ref, case_ref, subject_ref, validate_case_ref
 
 try:  # POSIX advisory locks are the required local concurrency primitive.
     import fcntl as _fcntl
@@ -2486,6 +2486,11 @@ def import_content_evidence(
             f"finding {finding_id} would exceed the "
             f"{MAX_EVIDENCE_PER_FINDING}-evidence limit"
         )
+    if any(
+        isinstance(item, dict) and item.get("id") == evidence_id
+        for item in evidence
+    ):
+        raise AuditError(f"evidence already exists: {evidence_id}")
     if sum(len(item["evidence"]) for item in existing_findings) >= MAX_TOTAL_EVIDENCE:
         raise AuditError(
             f"findings would exceed the {MAX_TOTAL_EVIDENCE}-evidence aggregate limit"
@@ -2535,12 +2540,8 @@ def import_content_evidence(
     logical_path = source.source.get("path", source.source.get("ref"))
     if not isinstance(logical_path, str):
         raise AuditError("content evidence source has no logical path")
-    artifact = _content_call(
-        _audit_evidence.store_evidence_blob,
-        workspace_path,
-        logical_path,
-        source.data,
-        executable=source.executable,
+    prospective_artifact = _binding_call(
+        artifact_ref, logical_path, source.data, executable=source.executable
     )
     entry = _content_call(
         _audit_evidence.build_content_evidence_record,
@@ -2548,7 +2549,7 @@ def import_content_evidence(
         evidence_type=evidence_type,
         kind=kind,
         case=binding["case_ref"],
-        artifact=artifact,
+        artifact=prospective_artifact,
         source=source.source,
         summary=summary,
         actor=actor,
@@ -2558,6 +2559,15 @@ def import_content_evidence(
         declared_command=declared_command,
         exit_code=exit_code,
     )
+    artifact = _content_call(
+        _audit_evidence.store_evidence_blob,
+        workspace_path,
+        logical_path,
+        source.data,
+        executable=source.executable,
+    )
+    if artifact != prospective_artifact:
+        raise AuditError("stored artifact does not match its prevalidated source bytes")
     evidence_reference = _content_call(
         _audit_evidence.content_evidence_record_ref,
         entry,
@@ -3080,19 +3090,22 @@ def render_report_markdown(workspace: str | Path) -> str:
         f"- Baseline HEAD: {_markdown_code(baseline.get('head'))}",
         f"- Baseline branch: {_markdown_code(baseline.get('branch'))}",
         f"- G0 declared gate: **{_markdown_text(gate.get('status'))}** — reviewer: {_markdown_text(gate.get('reviewer'))}",
+        f"- Evidence profile: {_markdown_code(report.get('evidence_profile'))}",
+        f"- Content binding state: {_markdown_code(report.get('content_binding_state'))}",
         f"- Preflight issue: {_markdown_text(report.get('preflight_issue') or 'None recorded')}",
         "",
         "## Finding summary",
         "",
         f"- Total findings: {summary.get('finding_count')}",
         f"- Findings from an older baseline: {summary.get('stale_finding_count')}",
+        f"- Findings from an older case: {summary.get('stale_case_finding_count')}",
         f"- By declared lifecycle state: {summary.get('by_status')}",
         f"- By severity: {summary.get('by_severity')}",
         "",
         "## Findings",
         "",
-        "| ID | Layer | Competency | Severity | Declared lifecycle state | Baseline | Title |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| ID | Layer | Competency | Severity | Declared lifecycle state | Baseline | Case | Title |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     findings = report["findings"]
     if not isinstance(findings, list):
@@ -3101,13 +3114,14 @@ def render_report_markdown(workspace: str | Path) -> str:
         if not isinstance(finding, dict):
             raise AuditError("report finding is invalid")
         lines.append(
-            "| {id} | {layer} | {competency} | {severity} | {status} | {baseline} | {title} |".format(
+            "| {id} | {layer} | {competency} | {severity} | {status} | {baseline} | {case} | {title} |".format(
                 id=_markdown_cell(finding.get("id")),
                 layer=_markdown_cell(finding.get("layer")),
                 competency=_markdown_cell(finding.get("competency")),
                 severity=_markdown_cell(finding.get("severity")),
                 status=_markdown_cell(finding.get("status")),
                 baseline=_markdown_cell(finding.get("baseline_state")),
+                case=_markdown_cell(finding.get("case_state")),
                 title=_markdown_cell(finding.get("title")),
             )
         )
@@ -3118,6 +3132,14 @@ def render_report_markdown(workspace: str | Path) -> str:
         evidence = finding.get("evidence")
         if not isinstance(evidence, list):
             raise AuditError("report finding evidence is invalid")
+        finding_case = finding.get("case_ref")
+        if finding_case is not None and not isinstance(finding_case, dict):
+            raise AuditError("report finding CaseRef is invalid")
+        case_label = (
+            "None (legacy finding)"
+            if finding_case is None
+            else f"{finding_case.get('case_id')} · sha256:{finding_case.get('case_sha256')}"
+        )
         lines.extend(
             [
                 f"### {_markdown_cell(finding.get('id'))} — {_markdown_cell(finding.get('title'))}",
@@ -3125,6 +3147,8 @@ def render_report_markdown(workspace: str | Path) -> str:
                 f"- Claim under review: {_markdown_cell(finding.get('claim'))}",
                 f"- First broken contract: {_markdown_cell(finding.get('first_broken_contract'))}",
                 f"- Baseline state: {_markdown_cell(finding.get('baseline_state'))}",
+                f"- Case state: {_markdown_cell(finding.get('case_state'))}",
+                f"- Retained finding CaseRef: {_markdown_code(case_label)}",
                 f"- Evidence records: {len(evidence)}",
             ]
         )

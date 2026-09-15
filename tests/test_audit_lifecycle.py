@@ -1170,6 +1170,55 @@ class AuditLifecycleTests(unittest.TestCase):
             verification["content_store"]["orphan_evidence_blobs"], 1
         )
 
+    def test_invalid_direct_content_metadata_does_not_publish_an_orphan_blob(self) -> None:
+        self._new_finding()
+        source = self.root / "invalid-direct-metadata.txt"
+        source.write_bytes(b"source bytes that must not be stored for bad metadata\n")
+        blob_store = self.workspace.joinpath(*evidence_core.BLOB_STORE_PARTS)
+        before = sorted(path.name for path in blob_store.iterdir())
+        common = {
+            "workspace": self.workspace,
+            "finding_id": "F-001",
+            "evidence_id": "E-invalid-direct",
+            "evidence_type": "artifact",
+            "kind": "observed",
+            "source_kind": "external",
+            "source_path": source,
+            "source_ref": "runs/invalid-direct-metadata.txt",
+            "summary": "A declared local fixture.",
+            "actor": "Auditor",
+            "artifact_role": "result",
+        }
+        with self.assertRaisesRegex(AuditError, "summary must be a non-empty string"):
+            import_content_evidence(**(common | {"summary": "   "}))
+        with self.assertRaisesRegex(AuditError, "artifact_role must be a non-empty string"):
+            import_content_evidence(**(common | {"artifact_role": "   "}))
+        with self.assertRaisesRegex(AuditError, "exit_code must be a signed 32-bit integer"):
+            import_content_evidence(
+                **(
+                    common
+                    | {
+                        "evidence_type": "command-result",
+                        "artifact_role": None,
+                        "declared_command": "fixture result generated elsewhere",
+                        "exit_code": 2**31,
+                    }
+                )
+            )
+        add_evidence(
+            self.workspace,
+            "F-001",
+            evidence_id="E-invalid-direct",
+            kind="observed",
+            reference="runs/invalid-direct-metadata.txt",
+            summary="This legacy pointer must not share an ID with an imported record.",
+            actor="Auditor",
+        )
+        with self.assertRaisesRegex(AuditError, "evidence already exists"):
+            import_content_evidence(**common)
+        self.assertEqual(sorted(path.name for path in blob_store.iterdir()), before)
+        self.assertEqual(verify_audit_workspace(self.workspace)["content_evidence_count"], 0)
+
     def test_cleanup_failure_recovers_without_duplicating_the_committed_event(self) -> None:
         event_count = len(
             (self.workspace / "audit-events.jsonl").read_text(encoding="utf-8").splitlines()

@@ -79,9 +79,9 @@ python scripts/rcsl.py audit init --project "$PROJECT" --output "$WORKSPACE" \
 python scripts/rcsl.py audit status "$WORKSPACE"
 ```
 
-它会通过固定目录句柄和独占创建生成 G0 契约模板、结构化 finding、evidence 和本地事件链所需的工作区；G0 初始为 `draft`，必须由人类填写、记录 gate 决定后才能通过 preflight。`audit report build` 同样固定 workspace 身份并拒绝覆盖，在 POSIX 上把报告写为 `0600`。完整命令链见 [Mode Audit 指南](docs/AUDIT_MODE.md)。
+它会通过固定目录句柄和独占创建生成 G0 契约模板、结构化 finding、evidence 和本地事件链所需的工作区；G0 初始为 `draft`，必须由人类填写、记录 gate 决定后才能通过 preflight。获批 G0 保存当前 Git `HEAD` 与研究契约字节的 case；之后用 `audit evidence import` 可保存一个明确指定的文件字节并关联 finding，`audit evidence add --reference` 仍只是文字引用，不能满足新 `verified` / `closed` 的内容证据门禁。`audit report build` 同样固定 workspace 身份并拒绝覆盖，在 POSIX 上把报告写为 `0600`。具体导入命令、来源与保证边界见 [Mode Audit 指南](docs/AUDIT_MODE.md)。
 
-Mode Audit 默认**不执行目标项目代码、不联网、不修改目标项目**。`--actor` / `--reviewer` 只是未认证的记录标签；hash chain 只检查仍被保留的本地记录是否自洽。任何 `current`、`local-records-consistent` 或 `preflight-current` 都不是 scientific PASS；finding 的 `verified` / `closed` 也只是声明式生命周期状态，不是独立验证或科学认证。
+Mode Audit 默认**不执行目标项目代码、不联网、不修改目标项目**；导入只读取并保存你明确指定的单个文件，不证明 Git tracked/`HEAD` 归属、外部来源或声明命令的真实执行。`--actor` / `--reviewer` 只是未认证的记录标签；hash chain 与本地内容摘要只检查仍被保留的记录/字节是否自洽。任何 `current`、`local-records-consistent` 或 `preflight-current` 都不是 scientific PASS；finding 的 `verified` / `closed` 也只是带内容证据门槛的声明式生命周期状态，不是独立验证或科学认证。
 
 案例维护者只有在发布案例时才需要 `python scripts/rcsl.py export open-demo --help` 或 `python scripts/rcsl.py package blind --help`；执行前先阅读完整的 [案例发布模型](docs/CASE_RELEASE_MODEL.md)。它们是维护者工具，不是第三种工作模式。
 
@@ -134,7 +134,7 @@ flowchart LR
 > **公开检查 PASS 只说明公开训练材料满足其包契约；它不等于论文结论为真，也不替代你的科学判断。**
 > 请在提交审计结果之前，只使用学习者材料。当前公开仓库采用的是约定式 **honor isolation**，不是访问控制或安全盲测；真正的盲测分包见 [案例发布模型](docs/CASE_RELEASE_MODEL.md)。
 
-Mode Audit 不使用 public PASS 给科学结论打分；`preflight-current`、`local-records-consistent` 以及声明式 `verified` / `closed` 只说明各自限定的本地记录与流程状态。
+Mode Audit 不使用 public PASS 给科学结论打分；`preflight-current`、`local-records-consistent`、`evidence_profile=content-bound-v1` 以及声明式 `verified` / `closed` 只说明各自限定的本地记录、内容绑定与流程状态。`content_binding_state=current` 不单独说明 G0 此刻 approved 或 preflight 通过。
 
 维护者侧，`export verify` / `package verify` PASS 只表示保留字节通过对应的本地 manifest、checksum 与分包检查。输出必须位于公开仓库外的全新位置，Blind 组装结果也只是私有的 `assembled-awaiting-controlled-placement` staging；这些检查不证明科学正确、没有泄漏、具备访问控制或已经正式发布。详细前置条件、schema、威胁边界和版本复核要求统一由 [案例发布模型](docs/CASE_RELEASE_MODEL.md)维护。Phase 3A 本地工具是 `implemented` + `internally verified`，但整个 Phase 3 尚未 `field validated`。
 

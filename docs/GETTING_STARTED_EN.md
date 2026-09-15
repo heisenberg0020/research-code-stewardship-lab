@@ -107,7 +107,7 @@ rcsl audit init --project "$PROJECT" --output "$WORKSPACE" \
 rcsl audit status "$WORKSPACE"
 ```
 
-Initialization pins the current `HEAD` and branch and creates four public templates, `findings/`, workspace metadata, and a hash-chained event log. G0 starts as `draft`. Files are exclusively created through pinned parent/new-workspace descriptors and directory identity is rechecked before completion; a path replaced or redirected during creation fails closed. Edit these files in the new directory:
+Initialization pins the current `HEAD` and branch and creates four public templates, `findings/`, workspace metadata, and a hash-chained event log. G0 starts as `draft`. Approved G0 also retains the contract bytes from that decision and a content-bound case. Files are exclusively created through pinned parent/new-workspace descriptors and directory identity is rechecked before completion; a path replaced or redirected during creation fails closed. Edit these files in the new directory:
 
 | File | Decision or evidence you provide |
 | --- | --- |
@@ -125,7 +125,7 @@ rcsl audit gate record "$WORKSPACE" --decision approved \
 rcsl audit preflight "$WORKSPACE"
 ```
 
-Only after preflight succeeds, record a reviewable claim as a finding, append evidence, and transition its state explicitly:
+Only after preflight succeeds, record a reviewable claim as a finding, import one explicit file you are authorized to review, and transition its state. Replace the sample file path with an actual file in your project:
 
 ```bash
 rcsl audit finding add "$WORKSPACE" --id F-001 \
@@ -133,13 +133,16 @@ rcsl audit finding add "$WORKSPACE" --id F-001 \
   --severity high --claim "Generated IDs may cross the declared split boundary." \
   --first-contract "Sample identity remains split-isolated." --actor "researcher"
 
-rcsl audit evidence add "$WORKSPACE" --finding F-001 --id E-001 \
-  --kind observed --reference "config/split.yaml" \
-  --summary "The recorded split rule needs independent recomputation." --actor "researcher"
+rcsl audit evidence import "$WORKSPACE" --finding F-001 --id E-001 \
+  --type artifact --artifact-role split-config --kind observed \
+  --source-kind project-relative --source-path config/split.yaml \
+  --summary "Retain these config bytes; split outcomes still need human recomputation." \
+  --actor "researcher"
 
 rcsl audit finding transition "$WORKSPACE" --finding F-001 --to triaged \
   --actor "researcher" --rationale "Location and next decisive check are recorded."
 rcsl audit finding list "$WORKSPACE"
+rcsl audit status "$WORKSPACE" --json
 
 # After a human completes the other three templates, check the whole workspace and hand it off.
 rcsl audit lint "$WORKSPACE"
@@ -158,7 +161,11 @@ rcsl audit rebaseline "$WORKSPACE" --actor "research-owner" \
 
 `lint`, `gate check`, `preflight`, `verify`, and `report build` speak only to their declared structural or local-integrity scope. They **do not** establish that the research question is legitimate, a finding holds, a repair is correct, or a scientific claim is approved. `--actor` and `--reviewer` are unauthenticated record labels. The hash chain can expose inconsistencies in retained local history; it cannot prevent deletion or wholesale replacement or authenticate identity. No scoped status is a scientific PASS; the finding values `verified` and `closed` are declared lifecycle states, not independent verification or scientific approval.
 
-By default Mode Audit only reads the target and Git metadata. It **does not execute project code, use the network, or modify the target project**. Those actions require separate explicit authorization outside this tool. See the [complete Mode Audit guide](AUDIT_MODE_EN.md) for command states, finding transitions, and hash-chain limits.
+By default Mode Audit only reads the target and Git metadata; importing also reads the one explicit file you select. It **does not execute project code, use the network, or modify the target project**. Those actions require separate explicit authorization outside this tool. See the [complete Mode Audit guide](AUDIT_MODE_EN.md) for command states, finding transitions, and hash-chain limits.
+
+`evidence import` retains one explicit regular file. A `project-relative` path is relative to the project root, but the tool does not prove that Git tracks the file or that its bytes belong to `HEAD`. For an external file, use `--source-kind external --source-path /absolute/path/to/file --source-ref runs/log.txt`; the source ref is a logical label, not authenticated provenance. `evidence add --reference` may still store a text citation, but it does not retain cited bytes or satisfy the new `verified` / `closed` gate. A new terminal transition needs a prior imported `observed` / `derived` / `reproduced` item for the current case. Confirm authorization, privacy, and local-retention risk before importing sensitive bytes. See the [complete Mode Audit guide](AUDIT_MODE_EN.md) for type-specific flags.
+
+`status --json`, `verify --json`, and `finding list --json` distinguish `evidence_profile`, `content_binding_state`, and a finding's `case_state`. These are local binding/staleness states only. `current` does not ensure G0 is presently approved or preflight passes; inspect G0 status and `preflight_issue` together.
 
 See the [modern research programmer competency model](COMPETENCY_MODEL_EN.md) for the seven accountable capabilities, four maturity bands, and capstone.
 

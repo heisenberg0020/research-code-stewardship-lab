@@ -22,6 +22,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from stewardship_lab import audit as audit_core
+from stewardship_lab import audit_evidence as evidence_core
 from stewardship_lab import release as release_core
 from stewardship_lab import training as training_core
 
@@ -551,6 +552,7 @@ AUDIT_OUTPUT_LIMITATIONS = (
     "This checks retained local records, declared lifecycle states, and declared human decisions only; verified/closed are recorded labels, not independent verification or a scientific verdict.",
     "Actor and reviewer names are labels, not authenticated identities or signatures.",
     "No audited-project code is executed and no network resource is fetched.",
+    "Content hashes bind retained bytes, not source authenticity, evidence sufficiency, scientific truth, or independent reproduction.",
 )
 
 
@@ -639,13 +641,27 @@ def command_audit_status(workspace: Path | str, *, as_json: bool) -> int:
         "summary": summary,
         "event_count": verification["event_count"],
         "preflight_issue": report["preflight_issue"],
+        "evidence_profile": report["evidence_profile"],
+        "content_binding_state": report["content_binding_state"],
+        "retained_case_ref": report["current_case_ref"],
+        "content_store": report["content_store"],
     }
     if as_json:
         _print_json(payload)
         return 0
     print(f"Audit workspace: {payload['workspace']}")
     print(f"G0 declared status: {str(gate.get('status')).upper()}")
-    print(f"Findings: {summary.get('finding_count')} total · {summary.get('stale_finding_count')} stale")
+    print(
+        f"Findings: {summary.get('finding_count')} total · "
+        f"{summary.get('stale_finding_count')} stale baseline · "
+        f"{summary.get('stale_case_finding_count')} stale case"
+    )
+    print(
+        f"Evidence profile: {payload['evidence_profile']} · "
+        f"content binding: {str(payload['content_binding_state']).upper()}"
+    )
+    if payload["retained_case_ref"] is not None:
+        print(f"Retained CaseRef: {payload['retained_case_ref']}")
     print(f"Retained local records: CONSISTENT ({payload['event_count']} events)")
     print(
         "Report preflight/current-record state: "
@@ -769,6 +785,8 @@ def command_audit_finding_list(workspace: Path | str, *, as_json: bool) -> int:
                 "assessment_status": "not-assessed",
                 "scope": "recorded finding snapshots",
                 "limitations": [AUDIT_OUTPUT_LIMITATIONS[0]],
+                "evidence_profile": report["evidence_profile"],
+                "content_binding_state": report["content_binding_state"],
                 "findings": findings,
             }
         )
@@ -779,7 +797,8 @@ def command_audit_finding_list(workspace: Path | str, *, as_json: bool) -> int:
         print(
             f"{finding['id']} · {finding['layer']} · {finding['severity']} · "
             f"declared-state={finding['status']} · "
-            f"{finding['baseline_state']} baseline · {finding['title']}"
+            f"{finding['baseline_state']} baseline · "
+            f"{finding['case_state']} case · {finding['title']}"
         )
     print(AUDIT_OUTPUT_LIMITATIONS[0])
     return 0
@@ -796,7 +815,80 @@ def command_audit_evidence_add(args: argparse.Namespace) -> int:
         actor=args.actor,
     )
     print(f"Evidence RECORDED for {finding['id']}: {args.evidence_id} · {args.kind}")
+    print("This is a reference-only entry: it does not satisfy the content-evidence terminal gate.")
     print("Presence in the record does not establish sufficiency, independence, or scientific correctness.")
+    return 0
+
+
+def command_audit_evidence_import(args: argparse.Namespace) -> int:
+    """Import one file; reject malformed CLI metadata before CAS I/O."""
+
+    def require_text(value: str | None, flag: str, maximum_bytes: int) -> None:
+        if value is None or not value.strip():
+            raise audit_core.AuditError(f"{flag} must be non-empty text")
+        try:
+            encoded_size = len(value.encode("utf-8"))
+        except UnicodeError as error:
+            raise audit_core.AuditError(f"{flag} must be valid UTF-8") from error
+        if encoded_size > maximum_bytes:
+            raise audit_core.AuditError(f"{flag} exceeds the {maximum_bytes}-byte limit")
+
+    require_text(args.summary, "--summary", 64_000)
+    require_text(args.actor, "--actor", 1_024)
+
+    if args.source_kind == "project-relative" and args.source_ref is not None:
+        raise audit_core.AuditError("project-relative import must not use --source-ref")
+    if args.source_kind == "external" and not args.source_ref:
+        raise audit_core.AuditError("external import requires --source-ref")
+    if args.source_kind == "external" and not args.source_path.is_absolute():
+        raise audit_core.AuditError("external import requires an absolute --source-path")
+    if args.evidence_type == "artifact":
+        if args.artifact_role is None:
+            raise audit_core.AuditError("artifact import requires --artifact-role")
+        require_text(args.artifact_role, "--artifact-role", 128)
+        if args.environment_scope is not None or args.declared_command is not None or args.exit_code is not None:
+            raise audit_core.AuditError("artifact import accepts only --artifact-role type metadata")
+    elif args.evidence_type == "environment":
+        if args.environment_scope is None:
+            raise audit_core.AuditError("environment import requires --environment-scope")
+        require_text(args.environment_scope, "--environment-scope", 256)
+        if args.artifact_role is not None or args.declared_command is not None or args.exit_code is not None:
+            raise audit_core.AuditError("environment import accepts only --environment-scope type metadata")
+    else:
+        if args.declared_command is None or args.exit_code is None:
+            raise audit_core.AuditError("command-result import requires --declared-command and --exit-code")
+        require_text(args.declared_command, "--declared-command", 64_000)
+        if not -(2**31) <= args.exit_code < 2**31:
+            raise audit_core.AuditError("--exit-code must be a signed 32-bit integer")
+        if args.artifact_role is not None or args.environment_scope is not None:
+            raise audit_core.AuditError("command-result import accepts only command and exit-code type metadata")
+
+    finding = audit_core.import_content_evidence(
+        args.workspace,
+        args.finding,
+        evidence_id=args.evidence_id,
+        evidence_type=args.evidence_type,
+        kind=args.kind,
+        source_kind=args.source_kind,
+        source_path=args.source_path,
+        source_ref=args.source_ref,
+        summary=args.summary,
+        actor=args.actor,
+        artifact_role=args.artifact_role,
+        environment_scope=args.environment_scope,
+        declared_command=args.declared_command,
+        exit_code=args.exit_code,
+    )
+    record = next(
+        item for item in finding["evidence"] if item["id"] == args.evidence_id
+    )
+    artifact = record["artifact_ref"]
+    print(
+        f"Content evidence IMPORTED for {finding['id']}: "
+        f"{args.evidence_id} · sha256:{artifact['sha256']}"
+    )
+    print("One explicit file was retained; the declared command was not executed.")
+    print(AUDIT_OUTPUT_LIMITATIONS[3])
     return 0
 
 
@@ -824,6 +916,9 @@ def command_audit_verify(workspace: Path | str, *, as_json: bool) -> int:
         "assessment_status": "local-records-consistent",
         "scope": result["validator_scope"],
         "limitations": list(AUDIT_OUTPUT_LIMITATIONS),
+        "evidence_profile": result["evidence_profile"],
+        "content_binding_state": result["content_binding_state"],
+        "retained_case_ref": result["current_case_ref"],
         "verification": result,
     }
     if as_json:
@@ -832,6 +927,12 @@ def command_audit_verify(workspace: Path | str, *, as_json: bool) -> int:
         print("Retained local records and current snapshots: CONSISTENT")
         print(f"Events: {result['event_count']} · Findings: {result['finding_count']}")
         print(f"Findings from an older baseline: {result['stale_finding_count']}")
+        print(
+            f"Evidence profile: {result['evidence_profile']} · "
+            f"content binding: {str(result['content_binding_state']).upper()}"
+        )
+        if result["current_case_ref"] is not None:
+            print(f"Retained CaseRef: {result['current_case_ref']}")
         print(AUDIT_OUTPUT_LIMITATIONS[0])
     return 0
 
@@ -1269,10 +1370,12 @@ def build_parser() -> argparse.ArgumentParser:
     finding_transition.add_argument("--rationale", required=True)
 
     audit_evidence = audit_commands.add_parser(
-        "evidence", help="Attach typed evidence to one finding without judging sufficiency."
+        "evidence", help="Record a reference or import one exact file without judging sufficiency."
     )
     evidence_commands = audit_evidence.add_subparsers(dest="evidence_command", required=True)
-    evidence_add = evidence_commands.add_parser("add", help="Append a typed evidence record.")
+    evidence_add = evidence_commands.add_parser(
+        "add", help="Append a reference-only entry; this cannot satisfy the content terminal gate."
+    )
     evidence_add.add_argument("workspace", type=Path)
     evidence_add.add_argument("--finding", required=True)
     evidence_add.add_argument("--id", dest="evidence_id", required=True)
@@ -1280,6 +1383,44 @@ def build_parser() -> argparse.ArgumentParser:
     evidence_add.add_argument("--reference", required=True)
     evidence_add.add_argument("--summary", required=True)
     evidence_add.add_argument("--actor", required=True)
+
+    evidence_import = evidence_commands.add_parser(
+        "import",
+        help="Retain one explicit file's bytes and digest; do not execute or fetch it.",
+        description=(
+            "Import one selected regular file into the current audit CaseRef. "
+            "Project-relative paths are relative to the bound Git root, not the CLI cwd. "
+            "External files need a logical --source-ref. Declared commands are not run. "
+            "Retained hashes do not prove provenance, sufficiency, or scientific truth."
+        ),
+    )
+    evidence_import.add_argument("workspace", type=Path)
+    evidence_import.add_argument("--finding", required=True)
+    evidence_import.add_argument("--id", dest="evidence_id", required=True)
+    evidence_import.add_argument(
+        "--type", dest="evidence_type", choices=evidence_core.EVIDENCE_TYPES, required=True
+    )
+    evidence_import.add_argument("--kind", choices=audit_core.EVIDENCE_KINDS, required=True)
+    evidence_import.add_argument(
+        "--source-kind", choices=("project-relative", "external"), required=True
+    )
+    evidence_import.add_argument(
+        "--source-path", type=Path, required=True,
+        help="Project-root-relative path or explicit local external file path.",
+    )
+    evidence_import.add_argument(
+        "--source-ref", help="Required logical POSIX path for an external file; forbidden for project-relative."
+    )
+    evidence_import.add_argument("--summary", required=True)
+    evidence_import.add_argument("--actor", required=True)
+    evidence_import.add_argument("--artifact-role", help="Required only for --type artifact.")
+    evidence_import.add_argument("--environment-scope", help="Required only for --type environment.")
+    evidence_import.add_argument(
+        "--declared-command", help="Required only for --type command-result; never executed."
+    )
+    evidence_import.add_argument(
+        "--exit-code", type=int, help="Required only for --type command-result; a declared value."
+    )
 
     audit_verify = audit_commands.add_parser(
         "verify",
@@ -1427,8 +1568,11 @@ def _dispatch_audit(args: argparse.Namespace) -> int:
             return command_audit_finding_list(args.workspace, as_json=args.json)
         if args.finding_command == "transition":
             return command_audit_finding_transition(args)
-    if args.audit_command == "evidence" and args.evidence_command == "add":
-        return command_audit_evidence_add(args)
+    if args.audit_command == "evidence":
+        if args.evidence_command == "add":
+            return command_audit_evidence_add(args)
+        if args.evidence_command == "import":
+            return command_audit_evidence_import(args)
     if args.audit_command == "verify":
         return command_audit_verify(args.workspace, as_json=args.json)
     if args.audit_command == "recover":

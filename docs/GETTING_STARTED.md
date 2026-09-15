@@ -107,7 +107,7 @@ rcsl audit init --project "$PROJECT" --output "$WORKSPACE" \
 rcsl audit status "$WORKSPACE"
 ```
 
-初始化会固定当前 `HEAD` 与 branch，创建四份公开模板、`findings/`、工作区元数据和 hash-chained 事件日志；G0 初始状态是 `draft`。文件通过固定的父目录/新工作区句柄独占创建，结束前复核目录身份；创建期间若路径被替换或重定向会 fail closed。接着编辑新目录中的：
+初始化会固定当前 `HEAD` 与 branch，创建四份公开模板、`findings/`、工作区元数据和 hash-chained 事件日志；G0 初始状态是 `draft`。获批 G0 还会保存当时的研究契约字节和 content-bound case。文件通过固定的父目录/新工作区句柄独占创建，结束前复核目录身份；创建期间若路径被替换或重定向会 fail closed。接着编辑新目录中的：
 
 | 文件 | 由你填写的决定或证据 |
 | --- | --- |
@@ -125,7 +125,7 @@ rcsl audit gate record "$WORKSPACE" --decision approved \
 rcsl audit preflight "$WORKSPACE"
 ```
 
-通过 preflight 后，才把一个可评审的 claim 记为 finding，追加证据，再显式转换状态：
+通过 preflight 后，才把一个可评审的 claim 记为 finding，导入一个你获准审阅的显式文件，再显式转换状态（把示例文件路径换成目标项目中真实存在的文件）：
 
 ```bash
 rcsl audit finding add "$WORKSPACE" --id F-001 \
@@ -133,13 +133,15 @@ rcsl audit finding add "$WORKSPACE" --id F-001 \
   --severity high --claim "Generated IDs may cross the declared split boundary." \
   --first-contract "Sample identity remains split-isolated." --actor "researcher"
 
-rcsl audit evidence add "$WORKSPACE" --finding F-001 --id E-001 \
-  --kind observed --reference "config/split.yaml" \
-  --summary "The recorded split rule needs independent recomputation." --actor "researcher"
+rcsl audit evidence import "$WORKSPACE" --finding F-001 --id E-001 \
+  --type artifact --artifact-role split-config --kind observed \
+  --source-kind project-relative --source-path config/split.yaml \
+  --summary "保存当前配置字节；切分结果仍需人工重算。" --actor "researcher"
 
 rcsl audit finding transition "$WORKSPACE" --finding F-001 --to triaged \
   --actor "researcher" --rationale "Location and next decisive check are recorded."
 rcsl audit finding list "$WORKSPACE"
+rcsl audit status "$WORKSPACE" --json
 
 # 人类完成其余三份模板后，再做整个工作区的结构检查与交接。
 rcsl audit lint "$WORKSPACE"
@@ -158,7 +160,11 @@ rcsl audit rebaseline "$WORKSPACE" --actor "research-owner" \
 
 `lint`、`gate check`、`preflight`、`verify` 和 `report build` 只说明它们声明的结构或本地一致性范围，**不表示研究问题正当、finding 成立、修复正确或科学结论获批**。`--actor` / `--reviewer` 是未认证的记录标签；hash chain 只能检出仍被保留的本地历史中的不一致，不能防删除、整体重写或认证身份。任何 scoped 状态都不是 scientific PASS；finding 的 `verified` / `closed` 只是声明式生命周期状态，不是独立验证或科学认证。
 
-Mode Audit 默认只读取目标项目和 Git 元数据，**不执行项目代码、不联网、不修改项目**。需要这些动作时，应在本工具之外另行取得明确授权。命令状态、finding 转换规则与 hash-chain 限制见 [Mode Audit 完整指南](AUDIT_MODE.md)。
+Mode Audit 默认只读取目标项目和 Git 元数据；导入时还读取你明确指定的单个文件。它**不执行项目代码、不联网、不修改项目**。需要这些动作时，应在本工具之外另行取得明确授权。命令状态、finding 转换规则与 hash-chain 限制见 [Mode Audit 完整指南](AUDIT_MODE.md)。
+
+`evidence import` 只保存一个显式普通文件。`project-relative` 路径相对项目根目录；它不证明文件已被 Git 跟踪或属于 `HEAD`。若是外部文件，改用 `--source-kind external --source-path /absolute/path/to/file --source-ref runs/log.txt`；`source-ref` 只是逻辑标签，不认证来源。`evidence add --reference` 仍可保存文字引用，但不保存引用处的字节，也不满足新 `verified` / `closed` 的门禁；新终态需要当前 case 上先前导入的 `observed` / `derived` / `reproduced` 内容证据。导入敏感文件前先确认授权、隐私和本地保留风险。命令与类型专属参数见 [Mode Audit 完整指南](AUDIT_MODE.md)。
+
+`status --json`、`verify --json` 与 `finding list --json` 区分 `evidence_profile`、`content_binding_state` 和 finding 的 `case_state`。这些只是本地绑定/过期状态；`current` 不保证 G0 此刻 approved 或 preflight 通过，应结合 G0 status 与 `preflight_issue`。
 
 七项负责人能力、四档成熟度和 capstone 见 [现代研究程序员能力模型](COMPETENCY_MODEL.md)。
 
