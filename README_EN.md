@@ -20,15 +20,17 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#choose-your-path">Choose your path</a> ·
+  <a href="docs/PROJECT_CHARTER_EN.md">Project charter</a> ·
   <a href="#four-levels">Four levels</a> ·
   <a href="docs/COMPETENCY_MODEL_EN.md">Competency model</a> ·
-  <a href="docs/VIEW_MODE_EN.md">Offline view</a> ·
   <a href="#what-public-pass-means">Validation boundary</a> ·
   <a href="#deep-dive">Deep dive</a>
 </p>
 
 > **This is a research-code audit lab, not simply a programming tutorial.**
 > It teaches you to decide whether an implementation is faithful to a paper, whether an experiment is trustworthy, whether the evidence supports the claim, and whether a coding agent stayed within human-approved boundaries.
+
+The [project charter](docs/PROJECT_CHARTER_EN.md) governs long-term direction: runnable is not trustworthy; Agents may execute, humans must judge; close the loop before building the platform, pilot before expanding, and prune before adding.
 
 RCSL now exposes two explicit modes. Both reuse G0, L1–L4, Evidence Passports, and human decision boundaries:
 
@@ -37,11 +39,18 @@ RCSL now exposes two explicit modes. Both reuse G0, L1–L4, Evidence Passports,
 | **Mode Train** | Train human research-code judgment with public cases; it does not train a model | `python scripts/rcsl.py train ...` |
 | **Mode Audit** | Bind a real project's clean Git `HEAD` and manage G0, findings, evidence, a local event chain, and a human-review report | `python scripts/rcsl.py audit ...` |
 
-Case maintainers also have separate **release tooling**: `export open-demo` creates a verifiable public bundle for the already-public LLM4SBR case, while `package blind` only assembles three local packages for a new, never-public case in private staging. Release tooling is not a third audit mode and cannot turn a public case into an unseen one.
+`export` / `package` remain maintainer-only release tools, not a third workflow mode; their entry points and boundaries appear below.
 
-Phase 4A adds optional `view build` / `view verify` commands. They project verified Open Demo data and optional local Audit/Training records into a JavaScript-free, outbound-link-free static view that needs no server. A view is a read-only snapshot, not a third mode, authoritative record, or secure hosting service.
+## Current validation status
 
-> **Recommended training entry:** begin with the [LLM4SBR four-level package](LLM4SBR_research_audit_training_v2/README.md). `LLM4SBR_code_judgement_training/` remains an earlier algorithm-judgment exercise, not the default learning path.
+| Work surface | Core implementation | Real pilot | Immediate next step |
+| --- | --- | --- | --- |
+| **Mode Audit** | `implemented` + `internally verified` | The public LLM4SBR Audit target is pinned to [`dfa5c725`](https://github.com/tsinghua-fib-lab/LLM4SBR/tree/dfa5c725c5aa9a251aec601dfd7ad2a38f84f8eb), but its G0 contract remains `draft`. No formal finding, content evidence, or second-person human review has been recorded, so it is not `field validated` | A named research owner must approve or block G0; only then create one narrow, byte-bound finding and a permission- and privacy-reviewed reviewer handoff |
+| **Mode Train** | `implemented` + `internally verified` | The real learner–independent-reviewer pilot is `pending participants`. The existing implementation is frozen for maintenance and is not `field validated` | Once real participants exist, run an L1 workflow trial followed by the complete L1–L4 + Capstone pilot |
+
+The current priority is to close one real Mode Audit loop that a second person can independently review—not to add more platform surface. Phase 3A is maintenance-only; Phase 3B, Phase 4, presentation, Dashboard, Registry, and hosting remain frozen. Automated tests, a draft G0, or Agent-only preparation cannot replace named human approval, an evidence-sufficiency decision, or independent review. See the [project charter](docs/PROJECT_CHARTER_EN.md) and [post-closure roadmap](docs/DUAL_MODE_ROADMAP_EN.md).
+
+> **Recommended training entry:** begin with the [LLM4SBR four-level package](LLM4SBR_research_audit_training_v2/README.md).
 
 ## Quick start
 
@@ -69,18 +78,6 @@ Continue Level 2 → 3 → 4 in sequence. At any point, validate the runnable **
 python scripts/rcsl.py train validate
 ```
 
-A case maintainer can export the current Open Demo to a new directory outside the public RCSL repository and optionally run the public checks during export. The target must not exist, and its immediate parent must already exist:
-
-```bash
-python scripts/rcsl.py export open-demo \
-  --output /absolute/path/to/new-open-demo-bundle \
-  --actor "maintainer label" \
-  --run-public-checks
-python scripts/rcsl.py export verify /absolute/path/to/new-open-demo-bundle
-```
-
-The bundle retains a boundary statement, manifest, checksums, validation record, revocation template, and standalone public verifier. The exporter first freezes the public source tree and runs selected checks against that snapshot; the manifest binds its actual content with `source_tree_sha256` while recording the limited Git-revision scope and the worktree's `clean`/`dirty` state. Verification requires an exact root/payload; repository-side verification also byte-compares the trusted verifier and boundary. Successful export or verification establishes only the local release contract and consistency of retained bytes; it does not prove scientific correctness, answer secrecy, or security isolation. See the [case release model](docs/CASE_RELEASE_MODEL_EN.md) for the complete boundary.
-
 To audit your own research project, put the workspace outside the target project and bind it to the current clean Git `HEAD`. The workspace path must not exist, while its immediate parent must already exist:
 
 ```bash
@@ -91,22 +88,13 @@ python scripts/rcsl.py audit init --project "$PROJECT" --output "$WORKSPACE" \
 python scripts/rcsl.py audit status "$WORKSPACE"
 ```
 
-This creates the workspace needed for a G0 contract, structured findings, evidence, and a local event chain through pinned-directory, exclusive writes. G0 starts as `draft`; a human must complete it and record a gate decision before preflight can succeed. `audit report build` likewise pins workspace identity and refuses overwrite, writing reports as `0600` on POSIX. See the full [Mode Audit guide](docs/AUDIT_MODE_EN.md).
+This creates the workspace needed for a G0 contract, structured findings, evidence, and a local event chain through pinned-directory, exclusive writes. G0 starts as `draft`; a human must complete it and record a gate decision before preflight can succeed. Approved G0 retains a case bound to the current Git `HEAD` and contract bytes. `audit evidence import` then retains one explicitly selected file's bytes for a finding; `audit evidence add --reference` remains a text citation and cannot satisfy the new `verified` / `closed` content-evidence gate. `audit report build` likewise pins workspace identity and refuses overwrite, writing reports as `0600` on POSIX. See the [Mode Audit guide](docs/AUDIT_MODE_EN.md) for exact import commands, sources, and limits.
 
-Mode Audit **does not execute target-project code, use the network, or modify the target project by default**. `--actor` and `--reviewer` are unauthenticated record labels. The hash chain checks only the internal consistency of retained local records. No `current`, `ledger-consistent`, or `review-ready` state is a scientific PASS.
+Mode Audit **does not execute target-project code, use the network, or modify the target project by default**. Import reads and retains only one file you explicitly select; it does not prove Git-tracked/`HEAD` membership, external provenance, or actual execution of a declared command. `--actor` and `--reviewer` are unauthenticated record labels. The hash chain and local content digests check only consistency of retained records/bytes. No `current`, `local-records-consistent`, or `preflight-current` state is a scientific PASS; `verified` and `closed` are declared states with a content-evidence gate, not independent verification or scientific approval.
 
-To browse a verified Open Demo and optional local Audit/Training evidence from one offline page, build a new static directory outside the repository:
+Case maintainers need `python scripts/rcsl.py export open-demo --help` or `python scripts/rcsl.py package blind --help` only when releasing a case; read the complete [case release model](docs/CASE_RELEASE_MODEL_EN.md) first. These are maintenance tools, not a third workflow mode.
 
-```bash
-python scripts/rcsl.py view build \
-  --open-demo /absolute/path/to/verified-open-demo \
-  --output /absolute/path/to/new-local-view
-python scripts/rcsl.py view verify /absolute/path/to/new-local-view
-```
-
-Open the generated `index.html` directly. A view containing Audit or Training evidence is marked `local-sensitive-not-deployable`, is locally sensitive, and must not be deployed. See the [offline static view guide](docs/VIEW_MODE_EN.md) for the complete input, permission, and verification boundaries.
-
-Legacy top-level commands such as `doctor`, `start`, `validate`, and `init-audit` remain compatibility aliases. New workflows should use the explicit `train` / `audit` / `export` / `package` / `view` namespaces.
+Every workflow now uses the explicit `train` / `audit` / `export` / `package` namespaces. Legacy top-level commands and the static-view surface that lacked field-validated demand have been pruned from the active product.
 
 For role-specific instructions, read the [Getting started guide](docs/GETTING_STARTED_EN.md) ([中文](docs/GETTING_STARTED.md)).
 For progress, immutable retries, the human rubric, and the cross-layer capstone, read the [Mode Train guide](docs/TRAIN_MODE_EN.md).
@@ -118,9 +106,8 @@ For progress, immutable retries, the human rubric, and the cross-layer capstone,
 | **Learner:** spot research code that runs but should not be trusted | [Mode Train guide](docs/TRAIN_MODE_EN.md) → `python scripts/rcsl.py train progress init ...` | Resumable Evidence Passports, immutable attempts, human feedback, and a cross-layer capstone |
 | **Reproducer / reviewer:** understand the paper before the implementation | [Source-blind paper-study protocol](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md) | A `PRE_AUDIT_BASELINE` for equations, data flow, metrics, and claim boundaries |
 | **Project owner / auditor:** audit a real project and manage its evidence | [Mode Audit guide](docs/AUDIT_MODE_EN.md) → `python scripts/rcsl.py audit init ...` | Commit-bound G0, finding/evidence lifecycle, verifiable local event chain, and a human-review report |
-| **Research owner:** turn another paper into a training package | [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md) → `python scripts/rcsl.py install-skill --dry-run` | A human-approved task-design specification and verifiable package |
+| **Research owner:** turn another paper into a training package | [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md) | A human-approved task-design specification and verifiable package |
 | **Case publisher:** release an Open Demo or prepare a controlled assessment from a never-public case | [Case release model](docs/CASE_RELEASE_MODEL_EN.md) → `python scripts/rcsl.py export open-demo ...` / `package blind ...` | A verifiable Open Demo bundle, or private three-package staging in `assembled-awaiting-controlled-placement` state |
-| **Local reviewer:** browse public cases and optional audit/training evidence offline | [Offline static view guide](docs/VIEW_MODE_EN.md) → `python scripts/rcsl.py view build ...` | A disposable, rebuildable static HTML/JSON snapshot—not a new verdict or a deployable site |
 | **Maintainer:** check the health of the repository | `python scripts/rcsl.py train doctor` → `python scripts/rcsl.py train validate` | Public-check results and a clear debugging entry point |
 
 ## Four levels
@@ -156,9 +143,9 @@ Read the [complete competency model](docs/COMPETENCY_MODEL_EN.md) ([中文](docs
 > **A public PASS says only that the public training materials satisfy their package contract. It does not certify a paper's conclusion or replace scientific judgment.**
 > Until you submit your audit, use learner materials only. This public repository provides **honor isolation**, not access control or a secure blind assessment; see the [case release model](docs/CASE_RELEASE_MODEL_EN.md) for true split packaging.
 
-Likewise, successful `export verify` or `package verify` means only that the bundle or staging area satisfies its local manifest, checksum, and separation rules. Both Open Demo and Blind outputs must remain outside the public repository, name a nonexistent target, and have an existing immediate parent. A Blind output must neither contain nor be contained by any of the three source roots. The Blind source manifest and all three sources must also remain outside the public repository; on POSIX, the manifest and its immediate parent must expose no group/other mode bit. Strict JSON refuses every float, versions require strict SemVer, timestamps accept only canonical UTC RFC 3339 `YYYY-MM-DDTHH:MM:SS[.fraction]Z`, and template placeholders fail closed; each role's non-generated payload must exactly equal `source_inventory`. `BUILD_RECORD.json` binds tool-revision scope/worktree state and packager/verifier digests. All three normally assembled roles self-verify from their own roots, while standalone verifiers fail closed on capacity, unreadable directories, and protected paths. Exact-value checking for the private `scoring.digest` exists only during assembly and trusted staging verification; an isolated Challenge standalone does not know that value, cannot prove that an unknown private digest is absent, and Challenge must not carry that digest or a derived commitment. Repository-side trusted-byte verification is coupled to the recorded tool revision, so old packages should be checked with that matching revision. Blind staging also performs bounded leakage and sensitive-path checks and checks current private modes on POSIX; it does not check or provide ACLs. None of these checks proves absence of leakage, provides access control, or turns `assembled-awaiting-controlled-placement` into a released Blind Challenge. Phase 3A local tooling is complete; Phase 3B controlled operation and Phase 3 overall remain incomplete.
+Mode Audit does not use public PASS to score scientific conclusions. `preflight-current`, `local-records-consistent`, `evidence_profile=content-bound-v1`, and the declared `verified` / `closed` values describe only their scoped local-record, content-binding, and process states. `content_binding_state=current` alone does not mean G0 is presently approved or preflight passed.
 
-Likewise, `view verify` establishes only that a generated directory satisfies the current static-view exact-file, manifest/checksum, no-dynamic-dependency, and local-mode contracts. It does not re-evaluate scientific conclusions, prove synchronization with a subsequently changed workspace, or provide signatures, ACLs, confidentiality, or secure hosting. The page must preserve `not_assessed` and known limitations, and every Blind staging or role package is refused as input.
+For maintainers, `export verify` / `package verify` PASS means only that retained bytes satisfy the corresponding local manifest, checksum, and package-separation checks. Outputs must use new locations outside the public repository, and an assembled Blind result remains private `assembled-awaiting-controlled-placement` staging; these checks do not prove scientific correctness, absence of leakage, access control, or formal release. The [case release model](docs/CASE_RELEASE_MODEL_EN.md) is the single source for detailed prerequisites, schemas, threat boundaries, and revision-aware verification. Phase 3A local tooling is `implemented` and `internally verified`, but Phase 3 as a whole is not `field validated`.
 
 ## Deep dive
 
@@ -206,12 +193,11 @@ README.md                              Chinese overview and general framework
 README_EN.md                           This English overview
 REPOSITORY_MAP.md                      Repository navigation
 requirements.txt                       Learner dependency for local public checks
-scripts/rcsl.py                        Unified CLI for Train, Audit, case release, and offline view
-stewardship_lab/                       Training progress, real-project audit, release/packaging, and static-view cores
+scripts/rcsl.py                        Unified CLI for Train, Audit, and case release
+stewardship_lab/                       Training progress, real-project audit, and release/packaging cores
 LICENSE                                Apache-2.0 license for original software
 DOCUMENTATION_LICENSE.md               CC BY 4.0 notice for original documentation
 THIRD_PARTY_NOTICES.md                 Third-party sources, exclusions, and access links
-LLM4SBR_code_judgement_training/       Earlier five-candidate code-judgment exercise
 LLM4SBR_research_audit_training_v2/    Complete four-level audit package
   CASE_FILE_EN.md                      Scope, provenance, Open Demo status, and review triggers
   CAPSTONE_BRIEF.md                    Public synthetic cross-layer incident brief
@@ -228,8 +214,6 @@ docs/                                  Protocols, examples, and implementation d
   AUDIT_MODE_EN.md                     English Mode Audit guide
   TRAIN_MODE.md                        Local training progress, human review, and export guide
   TRAIN_MODE_EN.md                     English Mode Train guide
-  VIEW_MODE.md                         Chinese Phase 4A offline-view and sensitivity guide
-  VIEW_MODE_EN.md                      English offline static-view guide
   DUAL_MODE_ROADMAP.md                 Phased Train/Audit implementation roadmap
   DUAL_MODE_ROADMAP_EN.md              English dual-mode roadmap
   COMPETENCY_MODEL_EN.md               G0, four-level axis, seven capabilities, maturity, and capstone
@@ -237,7 +221,7 @@ docs/                                  Protocols, examples, and implementation d
   PAPER_ONLY_REPRODUCTION_PROTOCOL.md  Source-blind paper study and clean-room protocol
   examples/LLM4SBR_PAPER_STUDY_GUIDE.md
                                         Source-blind study example
-tests/                                 Package contracts, Train/Audit lifecycles, release packaging, and static-view tests
+tests/                                 Package contracts, Train/Audit lifecycles, and release-packaging tests
 ```
 
 ## Recommended learning path

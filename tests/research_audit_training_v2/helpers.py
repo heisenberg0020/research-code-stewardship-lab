@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import os
 import subprocess
 from pathlib import Path
@@ -25,20 +24,11 @@ def run_python(*args: str, cwd: Path | None = None) -> subprocess.CompletedProce
     )
 
 
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    digest.update(path.read_bytes())
-    return digest.hexdigest()
-
-
 def student_files() -> list[Path]:
     blocked = "DO_NOT_OPEN_UNTIL_FINISHED"
-    return sorted(
-        path
-        for path in V2.rglob("*")
-        if path.is_file() and blocked not in path.parts and "__pycache__" not in path.parts
-    )
-
-
-def tree_digest(paths: list[Path]) -> dict[str, str]:
-    return {str(path.relative_to(ROOT)): sha256(path) for path in paths}
+    files: list[Path] = []
+    for directory, names, filenames in os.walk(V2):
+        names[:] = [name for name in names if name not in {blocked, "__pycache__"}]
+        root = Path(directory)
+        files.extend(root / name for name in filenames)
+    return sorted(files)

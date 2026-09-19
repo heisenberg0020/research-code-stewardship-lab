@@ -1,0 +1,4 @@
+run_id,config_id,started_at_utc,terminal_at_utc,status,reported_ndcg_at_10,observed_gpu_minutes,evidence_bundle_id,interruption_event_id
+R-042,CFG-42,2026-09-08T09:00:00Z,2026-09-08T09:31:00Z,completed,0.2123,28,B-042,
+R-043,CFG-43,2026-09-09T09:00:00Z,2026-09-09T09:33:00Z,completed,0.2214,29,B-043,
+R-044,CFG-44,2026-09-09T10:00:00Z,2026-09-09T11:06:00Z,completed_after_resume,0.2209,46,B-044,E-05

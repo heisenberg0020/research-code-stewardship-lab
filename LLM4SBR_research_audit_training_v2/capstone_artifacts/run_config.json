@@ -1,0 +1,47 @@
+{
+  "fixture_kind": "synthetic-open-demo",
+  "protocol_id": "P-17",
+  "comparison_plan": {
+    "metric": "NDCG@10",
+    "evaluation_role": "public-validation",
+    "independent_unit": "source session",
+    "planned_pairing": "same source sessions and seed across baseline and rerun",
+    "planned_cache_build_id": "C-11",
+    "planned_sample_order": "requested_ids",
+    "nominal_resource_ceiling_gpu_minutes": 30,
+    "claim_review_gate": "owner reviews lineage, comparison fairness, uncertainty, and permitted scope before release"
+  },
+  "configs": [
+    {
+      "config_id": "CFG-42",
+      "run_id": "R-042",
+      "source_snapshot_id": "SRC-before",
+      "cache_build_id": "C-11",
+      "sample_order": "requested_ids",
+      "split_manifest_id": "S-12",
+      "seed": 17,
+      "resource_ceiling_gpu_minutes": 30
+    },
+    {
+      "config_id": "CFG-43",
+      "run_id": "R-043",
+      "source_snapshot_id": "SRC-after",
+      "cache_build_id": "C-12",
+      "sample_order": "cache_order",
+      "split_manifest_id": "S-12",
+      "seed": 17,
+      "resource_ceiling_gpu_minutes": 30
+    },
+    {
+      "config_id": "CFG-44",
+      "run_id": "R-044",
+      "source_snapshot_id": "SRC-after",
+      "cache_build_id": "C-12",
+      "sample_order": "cache_order",
+      "split_manifest_id": "S-12",
+      "seed": 17,
+      "resource_ceiling_gpu_minutes": 50,
+      "purpose": "diagnostic rerun after interruption"
+    }
+  ]
+}

@@ -39,7 +39,6 @@ REPOSITORY_MAP.md                      全仓库导航
 LICENSE                                原创软件的 Apache-2.0 许可证
 DOCUMENTATION_LICENSE.md               原创文档的 CC BY 4.0 许可说明
 THIRD_PARTY_NOTICES.md                 第三方来源、排除项与获取方式
-LLM4SBR_code_judgement_training/       初版五候选代码辨认题
 LLM4SBR_research_audit_training_v2/    完整四级研究代码审计训练包
   level_1_algorithm_semantics/         算法语义与公式实现
   level_2_pipeline_integrity/          数据、训练、评估流水线完整性

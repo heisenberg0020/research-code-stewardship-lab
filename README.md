@@ -20,15 +20,17 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#choose-your-path">选择路径</a> ·
+  <a href="docs/PROJECT_CHARTER.md">项目宪章</a> ·
   <a href="#four-levels">四级训练</a> ·
   <a href="docs/COMPETENCY_MODEL.md">能力模型</a> ·
-  <a href="docs/VIEW_MODE.md">离线视图</a> ·
   <a href="#what-public-pass-means">验证边界</a> ·
   <a href="#deep-dive">深入了解</a>
 </p>
 
 > **这是一个研究代码审计实验室，而不是单纯的编程教程。**
 > 它训练你判断：实现是否忠实于论文、实验是否可被信任、证据是否支撑主张，以及 Coding Agent 是否始终处于人类批准的边界内。
+
+长期方向由[项目宪章](docs/PROJECT_CHARTER.md)约束：能跑不等于可信，Agent 可以执行、人必须判断；先闭环再平台，先试点再扩张，先剪枝再新增。
 
 RCSL 现在有两个显式模式，共用 G0、L1–L4、证据护照与人类决策边界：
 
@@ -37,11 +39,18 @@ RCSL 现在有两个显式模式，共用 G0、L1–L4、证据护照与人类�
 | **Mode Train** | 用公开案例训练人类的科研代码判断力；它不是训练模型 | `python scripts/rcsl.py train ...` |
 | **Mode Audit** | 绑定真实项目的 clean Git `HEAD`，管理 G0、finding、evidence、事件链与人工复审报告 | `python scripts/rcsl.py audit ...` |
 
-案例维护者还可以使用独立的**发布工具**：`export open-demo` 为当前已公开的 LLM4SBR 案例生成可验证的公开发布包；`package blind` 只把一个从未公开的新案例组装为三包本地私有 staging。发布工具不是第三种审计模式，也不会把公开案例变成盲题。
+`export` / `package` 仅作为案例维护者的发布工具保留，不是第三种工作模式；入口和边界见下文。
 
-Phase 4A 另提供可选的 `view build` / `view verify`：它把已验证的 Open Demo 和可选的本地 Audit/Training 记录投影成无 JavaScript、无外链、无需服务器的离线静态视图。view 只是只读快照，不是第三种模式、权威记录或安全托管。
+## 当前验证状态
 
-> **训练推荐入口：**从 [LLM4SBR 四级训练包](LLM4SBR_research_audit_training_v2/README.md) 开始。`LLM4SBR_code_judgement_training/` 保留为早期的算法判错练习，不是新的默认学习路径。
+| 工作面 | 核心实现 | 真实试点 | 当前下一步 |
+| --- | --- | --- | --- |
+| **Mode Audit** | `implemented` + `internally verified` | LLM4SBR 公开 Audit 的目标版本已固定在 [`dfa5c725`](https://github.com/tsinghua-fib-lab/LLM4SBR/tree/dfa5c725c5aa9a251aec601dfd7ad2a38f84f8eb)，G0 契约仍为 `draft`；尚无正式 finding、内容证据或第二位真人复核，因此尚未 `field validated` | 由具名研究负责人批准或阻塞 G0，再建立一个绑定真实字节的窄 finding，并形成经权限与隐私检查的 reviewer handoff |
+| **Mode Train** | `implemented` + `internally verified` | 真实学习者—独立审阅者试点为 `pending participants`；现有技术流程进入冻结维护，因此尚未 `field validated` | 等真实参与者到位后再运行 L1 流程试跑与完整 L1–L4 + Capstone 试点 |
+
+当前主线是先把 Mode Audit 推进到可由第二人独立复核的真实闭环，而不是继续增加平台功能。Phase 3A 只维护不扩张；Phase 3B、Phase 4、展示、Dashboard、Registry 与托管继续冻结。自动测试、G0 草稿或 Agent-only 准备都不能替代具名人类的批准、证据充分性判断与独立复核。详见[项目宪章](docs/PROJECT_CHARTER.md)和[收口后的路线图](docs/DUAL_MODE_ROADMAP.md)。
+
+> **训练推荐入口：**从 [LLM4SBR 四级训练包](LLM4SBR_research_audit_training_v2/README.md) 开始。
 
 ## Quick start
 
@@ -69,18 +78,6 @@ python scripts/rcsl.py train progress init \
 python scripts/rcsl.py train validate
 ```
 
-案例维护者可把当前 Open Demo 导出到公开 RCSL 仓库外的全新目录，并选择在导出前实际运行公开检查。目标路径必须尚不存在，其直接父目录必须已经存在：
-
-```bash
-python scripts/rcsl.py export open-demo \
-  --output /absolute/path/to/new-open-demo-bundle \
-  --actor "maintainer label" \
-  --run-public-checks
-python scripts/rcsl.py export verify /absolute/path/to/new-open-demo-bundle
-```
-
-该 bundle 保存边界说明、manifest、checksums、验证记录、撤回模板和独立 public verifier。导出器先冻结本次公开源树，并在该快照上运行所选检查；manifest 以 `source_tree_sha256` 绑定实际内容，同时记录 Git revision 的有限范围与 worktree 的 `clean`/`dirty` 状态。校验要求精确 root/payload；仓库侧还逐字节核对受信任 verifier 与 boundary。导出或校验成功只说明本地发布契约与保留字节自洽，不证明科学正确性、答案保密或安全隔离。完整发布边界见 [案例发布模型](docs/CASE_RELEASE_MODEL.md)。
-
 如果你要审计自己的研究项目，请把工作区放在目标项目之外，并绑定它当前的 clean Git `HEAD`。工作区路径必须尚不存在，其直接父目录必须已经存在：
 
 ```bash
@@ -91,22 +88,13 @@ python scripts/rcsl.py audit init --project "$PROJECT" --output "$WORKSPACE" \
 python scripts/rcsl.py audit status "$WORKSPACE"
 ```
 
-它会通过固定目录句柄和独占创建生成 G0 契约模板、结构化 finding、evidence 和本地事件链所需的工作区；G0 初始为 `draft`，必须由人类填写、记录 gate 决定后才能通过 preflight。`audit report build` 同样固定 workspace 身份并拒绝覆盖，在 POSIX 上把报告写为 `0600`。完整命令链见 [Mode Audit 指南](docs/AUDIT_MODE.md)。
+它会通过固定目录句柄和独占创建生成 G0 契约模板、结构化 finding、evidence 和本地事件链所需的工作区；G0 初始为 `draft`，必须由人类填写、记录 gate 决定后才能通过 preflight。获批 G0 保存当前 Git `HEAD` 与研究契约字节的 case；之后用 `audit evidence import` 可保存一个明确指定的文件字节并关联 finding，`audit evidence add --reference` 仍只是文字引用，不能满足新 `verified` / `closed` 的内容证据门禁。`audit report build` 同样固定 workspace 身份并拒绝覆盖，在 POSIX 上把报告写为 `0600`。具体导入命令、来源与保证边界见 [Mode Audit 指南](docs/AUDIT_MODE.md)。
 
-Mode Audit 默认**不执行目标项目代码、不联网、不修改目标项目**。`--actor` / `--reviewer` 只是未认证的记录标签；hash chain 只检查仍被保留的本地记录是否自洽。任何 `current`、`ledger-consistent` 或 `review-ready` 都不是 scientific PASS。
+Mode Audit 默认**不执行目标项目代码、不联网、不修改目标项目**；导入只读取并保存你明确指定的单个文件，不证明 Git tracked/`HEAD` 归属、外部来源或声明命令的真实执行。`--actor` / `--reviewer` 只是未认证的记录标签；hash chain 与本地内容摘要只检查仍被保留的记录/字节是否自洽。任何 `current`、`local-records-consistent` 或 `preflight-current` 都不是 scientific PASS；finding 的 `verified` / `closed` 也只是带内容证据门槛的声明式生命周期状态，不是独立验证或科学认证。
 
-如果想在一个页面中离线浏览已验证 Open Demo，并可选加入本地 Audit/Training 证据，可生成一个仓库外的新静态目录：
+案例维护者只有在发布案例时才需要 `python scripts/rcsl.py export open-demo --help` 或 `python scripts/rcsl.py package blind --help`；执行前先阅读完整的 [案例发布模型](docs/CASE_RELEASE_MODEL.md)。它们是维护者工具，不是第三种工作模式。
 
-```bash
-python scripts/rcsl.py view build \
-  --open-demo /absolute/path/to/verified-open-demo \
-  --output /absolute/path/to/new-local-view
-python scripts/rcsl.py view verify /absolute/path/to/new-local-view
-```
-
-直接打开生成的 `index.html` 即可。包含 Audit 或 Training evidence 的 view 会标记为 `local-sensitive-not-deployable`，属于本地敏感产物且不应部署；完整输入、权限与验证边界见 [离线静态视图指南](docs/VIEW_MODE.md)。
-
-旧的顶层命令（如 `doctor`、`start`、`validate`、`init-audit`）仍作为兼容别名保留；新工作流应使用明确的 `train` / `audit` / `export` / `package` / `view` 命名空间。
+所有工作流都使用明确的 `train` / `audit` / `export` / `package` 命名空间；旧顶层命令和未经过真实需求验证的静态 view 已从活跃产品面剪除。
 
 完整的按角色说明见 [开始指南](docs/GETTING_STARTED.md)（[English](docs/GETTING_STARTED_EN.md)）。
 学习进度、不可变重做、人工 Rubric 与跨层 Capstone 见 [Mode Train 指南](docs/TRAIN_MODE.md)。
@@ -118,9 +106,8 @@ python scripts/rcsl.py view verify /absolute/path/to/new-local-view
 | **学习者**：练习发现“可运行但不可信”的科研代码 | [Mode Train 指南](docs/TRAIN_MODE.md) → `python scripts/rcsl.py train progress init ...` | 可恢复 Evidence Passport、不可变尝试、人工反馈与跨层 Capstone |
 | **复现者 / 审稿人**：先理解论文，再看源码 | [Source-blind 论文学习协议](docs/PAPER_ONLY_REPRODUCTION_PROTOCOL.md) | `PRE_AUDIT_BASELINE`：公式、数据流、指标和 claim 边界 |
 | **项目负责人 / 审计员**：审计一个真实项目并管理证据 | [Mode Audit 指南](docs/AUDIT_MODE.md) → `python scripts/rcsl.py audit init ...` | 绑定 commit 的 G0、finding/evidence 生命周期、可验证的本地事件链与人工复审报告 |
-| **研究负责人**：把另一篇论文变成训练包 | [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md) → `python scripts/rcsl.py install-skill --dry-run` | 需经人类批准的题目设计规格与可验证训练包 |
+| **研究负责人**：把另一篇论文变成训练包 | [Research Code Audit Training Skill](skills/research-code-audit-training/SKILL.md) | 需经人类批准的题目设计规格与可验证训练包 |
 | **案例发布者**：发布 Open Demo，或为从未公开的新案例准备受控盲测 | [案例发布模型](docs/CASE_RELEASE_MODEL.md) → `python scripts/rcsl.py export open-demo ...` / `package blind ...` | 可验证 Open Demo bundle，或状态为 `assembled-awaiting-controlled-placement` 的三包私有 staging |
-| **本地审阅者**：离线浏览公开案例与可选的审计/训练证据 | [离线静态视图指南](docs/VIEW_MODE.md) → `python scripts/rcsl.py view build ...` | 可丢弃重建的静态 HTML/JSON 快照；不是新 verdict 或可直接托管的网站 |
 | **维护者**：确认仓库是否仍健康 | `python scripts/rcsl.py train doctor` → `python scripts/rcsl.py train validate` | 公开检查结果与下一步排错入口 |
 
 ## Four levels
@@ -156,9 +143,9 @@ flowchart LR
 > **公开检查 PASS 只说明公开训练材料满足其包契约；它不等于论文结论为真，也不替代你的科学判断。**
 > 请在提交审计结果之前，只使用学习者材料。当前公开仓库采用的是约定式 **honor isolation**，不是访问控制或安全盲测；真正的盲测分包见 [案例发布模型](docs/CASE_RELEASE_MODEL.md)。
 
-同样，`export verify` 与 `package verify` 的成功只证明对应 bundle/staging 满足本地 manifest、checksum 和分包规则。Open Demo 与 Blind 的输出都必须位于公开仓库外、目标尚不存在且直接父目录已存在；Blind 输出还不能包含任一 source，也不能位于任一 source 内。Blind source manifest 和三个来源也必须位于公开仓库外；在 POSIX 上 manifest 及其直接父目录不能开放 group/other 权限。严格 JSON 拒绝所有浮点值，版本要求严格 SemVer，时间只接受规范 UTC RFC3339 `YYYY-MM-DDTHH:MM:SS[.fraction]Z`，模板占位值 fail closed；每个角色的非生成 payload 必须精确等于 `source_inventory`。`BUILD_RECORD.json` 绑定 tool revision scope/worktree state 与 packager/verifier 摘要；正常组装后的三个角色都能从自身根目录独立自验，standalone 对容量、不可读目录与受保护路径 fail closed。私有 `scoring.digest` 的精确值扫描只存在于组装与受信任 staging 校验中；隔离后的 Challenge standalone 不知道该值，不能证明未知私有摘要未泄露，Challenge 也不得携带该摘要或其派生承诺。仓库侧的受信任字节校验与所记录工具 revision 相绑定，旧包应使用对应 revision 复核。Blind staging 还执行有界泄题与敏感路径检查，并在 POSIX 上检查当前私有 mode；它不检查或提供 ACL。上述检查都不能证明没有信息泄漏，不能提供访问控制，也不能把 `assembled-awaiting-controlled-placement` 解释为已发布的 Blind Challenge。当前完成的是 Phase 3A 本地工具；Phase 3B 受控运营与 Phase 3 整体仍未完成。
+Mode Audit 不使用 public PASS 给科学结论打分；`preflight-current`、`local-records-consistent`、`evidence_profile=content-bound-v1` 以及声明式 `verified` / `closed` 只说明各自限定的本地记录、内容绑定与流程状态。`content_binding_state=current` 不单独说明 G0 此刻 approved 或 preflight 通过。
 
-`view verify` 也只证明生成目录满足当前静态 view 的精确文件、manifest/checksum、无动态依赖与本地 mode 契约；它不复核科学结论，不证明快照仍与后来变化的 workspace 同步，也不提供签名、ACL、保密或安全托管。页面必须保留 `not_assessed` 与 known limitations，Blind staging/role package 则一律拒绝进入 view。
+维护者侧，`export verify` / `package verify` PASS 只表示保留字节通过对应的本地 manifest、checksum 与分包检查。输出必须位于公开仓库外的全新位置，Blind 组装结果也只是私有的 `assembled-awaiting-controlled-placement` staging；这些检查不证明科学正确、没有泄漏、具备访问控制或已经正式发布。详细前置条件、schema、威胁边界和版本复核要求统一由 [案例发布模型](docs/CASE_RELEASE_MODEL.md)维护。Phase 3A 本地工具是 `implemented` + `internally verified`，但整个 Phase 3 尚未 `field validated`。
 
 ## Deep dive
 
@@ -207,12 +194,11 @@ README.md                              项目简介与通用训练框架
 README_EN.md                           英文版项目简介
 REPOSITORY_MAP.md                      全仓库导航
 requirements.txt                       本地公开检查的学习者依赖
-scripts/rcsl.py                        Train / Audit、案例发布与离线 view 的统一 CLI 入口
-stewardship_lab/                       训练进度、真实项目审计、本地发布/分包与静态视图内核
+scripts/rcsl.py                        Train / Audit 与案例发布的统一 CLI 入口
+stewardship_lab/                       训练进度、真实项目审计与本地发布/分包内核
 LICENSE                                原创软件的 Apache-2.0 许可证
 DOCUMENTATION_LICENSE.md               原创文档的 CC BY 4.0 许可说明
 THIRD_PARTY_NOTICES.md                 第三方来源、排除项与获取方式
-LLM4SBR_code_judgement_training/       初版五候选代码辨认题
 LLM4SBR_research_audit_training_v2/    完整四级研究代码审计训练包
   CASE_FILE.md                         当前案例的范围、来源、Open Demo 状态与复审条件
   CAPSTONE_BRIEF.md                    公开合成跨层事故说明
@@ -229,15 +215,13 @@ docs/                                  复现协议、实施审核和设计决�
   AUDIT_MODE_EN.md                     真实项目审计英文指南
   TRAIN_MODE.md                        本地训练进度、人工复核与导出指南
   TRAIN_MODE_EN.md                     Mode Train 英文指南
-  VIEW_MODE.md                         Phase 4A 离线静态视图、敏感性与验证边界
-  VIEW_MODE_EN.md                      离线静态视图英文指南
   DUAL_MODE_ROADMAP.md                 Train / Audit 的分阶段实施路线图
   DUAL_MODE_ROADMAP_EN.md              双模式英文路线图
   COMPETENCY_MODEL.md                  G0、四级纵轴、七项横向能力、成熟度与 capstone
   CASE_RELEASE_MODEL.md                Open Demo 与真正 Blind Challenge 的发布边界
   PAPER_ONLY_REPRODUCTION_PROTOCOL.md  Source-blind 论文学习与 clean-room 复现双模式协议
   examples/LLM4SBR_PAPER_STUDY_GUIDE.md 协议生成的 source-blind 论文学习参考样例
-tests/                                 包契约、训练/审计生命周期、发布分包与静态视图测试
+tests/                                 包契约、训练/审计生命周期与发布分包测试
 ```
 
 ### 从哪里开始

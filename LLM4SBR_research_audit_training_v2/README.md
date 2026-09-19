@@ -46,7 +46,7 @@ python scripts/rcsl.py train progress init \
   --learner "your declared label"
 ```
 
-The workspace contains editable L1–L4 and capstone worksheets, a maturity rubric, the capstone brief, and one resumable `progress.json`. See the [Mode Train guide](../docs/TRAIN_MODE_EN.md) for checking, submitting, human review, and redacted export.
+The workspace contains editable L1–L4 and capstone worksheets, a maturity rubric, the capstone brief, one resumable `progress.json`, and a frozen `case/` copy of the 122 explicitly listed public Open Demo inputs. That case is bound by the actual path/byte digests; Git `HEAD` is provenance only. The **only** answer files submitted by `train progress` are the workspace's `worksheets/*.md`. The package's `ANSWER_SHEET.md` files are learning templates/reference, not a second submission route. See the [Mode Train guide](../docs/TRAIN_MODE_EN.md) for checking, submitting, building a non-redacted reviewer packet, human review, and separate redacted export.
 
 ## The four audit layers
 
@@ -61,13 +61,13 @@ Each level has a learner-visible `ANSWER_SHEET.md` for recording the evidence ch
 
 ## Progress and capstone
 
-The optional `train progress` workflow turns each completed worksheet into a frozen attempt with a digest and preserves later retries. It keeps three meanings separate:
+The optional `train progress` workflow turns each completed workspace worksheet into a frozen, case-bound attempt with a digest and preserves later retries. A reviewer can build and verify a self-contained packet containing that exact frozen answer and the public case bytes; verification needs a trusted RCSL tool/checkout, but not the original case repository or learner workspace. Recording a review requires the matching packet digest. This checks the declared review target, not whether a person read the packet or judged correctly. The workflow keeps three meanings separate:
 
 - **worksheet structure:** whether required sections are present, nonempty, and free of unresolved prompts;
 - **human review:** a named person's `pass`, `revise`, or `blocked` decision with Recognize / Prove / Direct / Steward observations and explicit evidence gaps;
 - **scientific correctness:** always `not_assessed` by the public CLI.
 
-Multiple reviewer records remain separate; disagreement is not averaged into a score. The capstone integrates triage, blast radius, evidence preservation, Human–Agent delegation, claim boundaries, remediation, and stakeholder communication. It passes only through an explicit named human review. Reviewer and learner names are declared labels, not authenticated identities.
+Multiple reviewer records remain separate; disagreement is not averaged into a score. The capstone now has six small public synthetic artifacts—diff, configuration, run ledger, Agent events, approvals, and draft claim note—to inspect and cite. They are leads with explicit gaps, not authenticated events or a complete experiment. The capstone integrates triage, blast radius, evidence preservation, Human–Agent delegation, claim boundaries, remediation, and stakeholder communication. It passes only through an explicit named human review. Reviewer and learner names are declared labels, not authenticated identities. This flow is only `internally verified`; no real learner/reviewer pilot has validated it.
 
 ## How to use the package
 
@@ -75,12 +75,12 @@ Multiple reviewer records remain separate; disagreement is not averaged into a s
 
 1. Read the level brief and its frozen contract before inspecting implementations.
 2. Run the relevant public validation to learn what it does—and does not—establish.
-3. Build a minimal counterexample and record a causal argument in that level’s `ANSWER_SHEET.md`.
+3. Build a minimal counterexample and record a causal argument in that level’s public `ANSWER_SHEET.md` if working directly in the course; for tracked attempts, keep the answer only in your external workspace's `worksheets/<target>.md`.
 4. Advance only after you can explain why a result may still look plausible while violating the underlying research contract.
 
 ### Reviewer or maintainer
 
-Run the four learner-visible validations after changing learner-facing files:
+Run the four learner-visible validations after changing learner-facing files. For a tracked learner attempt, the independent reviewer should first inspect and verify its non-redacted [reviewer packet](../docs/TRAIN_MODE_EN.md#4-record-a-named-human-review), then supply that packet digest to `train progress review`. The packet retains the original answer and may contain personal information; the workspace owner decides whether and with whom to share it. The redacted progress export is not a substitute. None of these byte checks certifies the human decision.
 
 ```bash
 python LLM4SBR_research_audit_training_v2/run_all_public_checks.py
