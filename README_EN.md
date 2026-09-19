@@ -41,6 +41,15 @@ RCSL now exposes two explicit modes. Both reuse G0, L1–L4, Evidence Passports,
 
 `export` / `package` remain maintainer-only release tools, not a third workflow mode; their entry points and boundaries appear below.
 
+## Current validation status
+
+| Work surface | Core implementation | Real pilot | Immediate next step |
+| --- | --- | --- | --- |
+| **Mode Audit** | `implemented` + `internally verified` | The public LLM4SBR Audit target is pinned to [`dfa5c725`](https://github.com/tsinghua-fib-lab/LLM4SBR/tree/dfa5c725c5aa9a251aec601dfd7ad2a38f84f8eb), but its G0 contract remains `draft`. No formal finding, content evidence, or second-person human review has been recorded, so it is not `field validated` | A named research owner must approve or block G0; only then create one narrow, byte-bound finding and a permission- and privacy-reviewed reviewer handoff |
+| **Mode Train** | `implemented` + `internally verified` | The real learner–independent-reviewer pilot is `pending participants`. The existing implementation is frozen for maintenance and is not `field validated` | Once real participants exist, run an L1 workflow trial followed by the complete L1–L4 + Capstone pilot |
+
+The current priority is to close one real Mode Audit loop that a second person can independently review—not to add more platform surface. Phase 3A is maintenance-only; Phase 3B, Phase 4, presentation, Dashboard, Registry, and hosting remain frozen. Automated tests, a draft G0, or Agent-only preparation cannot replace named human approval, an evidence-sufficiency decision, or independent review. See the [project charter](docs/PROJECT_CHARTER_EN.md) and [post-closure roadmap](docs/DUAL_MODE_ROADMAP_EN.md).
+
 > **Recommended training entry:** begin with the [LLM4SBR four-level package](LLM4SBR_research_audit_training_v2/README.md).
 
 ## Quick start

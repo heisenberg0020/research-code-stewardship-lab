@@ -41,6 +41,15 @@ RCSL 现在有两个显式模式，共用 G0、L1–L4、证据护照与人类�
 
 `export` / `package` 仅作为案例维护者的发布工具保留，不是第三种工作模式；入口和边界见下文。
 
+## 当前验证状态
+
+| 工作面 | 核心实现 | 真实试点 | 当前下一步 |
+| --- | --- | --- | --- |
+| **Mode Audit** | `implemented` + `internally verified` | LLM4SBR 公开 Audit 的目标版本已固定在 [`dfa5c725`](https://github.com/tsinghua-fib-lab/LLM4SBR/tree/dfa5c725c5aa9a251aec601dfd7ad2a38f84f8eb)，G0 契约仍为 `draft`；尚无正式 finding、内容证据或第二位真人复核，因此尚未 `field validated` | 由具名研究负责人批准或阻塞 G0，再建立一个绑定真实字节的窄 finding，并形成经权限与隐私检查的 reviewer handoff |
+| **Mode Train** | `implemented` + `internally verified` | 真实学习者—独立审阅者试点为 `pending participants`；现有技术流程进入冻结维护，因此尚未 `field validated` | 等真实参与者到位后再运行 L1 流程试跑与完整 L1–L4 + Capstone 试点 |
+
+当前主线是先把 Mode Audit 推进到可由第二人独立复核的真实闭环，而不是继续增加平台功能。Phase 3A 只维护不扩张；Phase 3B、Phase 4、展示、Dashboard、Registry 与托管继续冻结。自动测试、G0 草稿或 Agent-only 准备都不能替代具名人类的批准、证据充分性判断与独立复核。详见[项目宪章](docs/PROJECT_CHARTER.md)和[收口后的路线图](docs/DUAL_MODE_ROADMAP.md)。
+
 > **训练推荐入口：**从 [LLM4SBR 四级训练包](LLM4SBR_research_audit_training_v2/README.md) 开始。
 
 ## Quick start
